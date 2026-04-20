@@ -1,0 +1,194 @@
+/* ToolBill - custom styles on top of Tailwind CDN */
+
+/* ---------- Base ---------- */
+html, body { height: 100%; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Bigger tap targets on tablets */
+@media (pointer: coarse) {
+  button, .tap { min-height: 44px; }
+  input, select { min-height: 44px; font-size: 16px; }
+}
+
+/* ---------- Tabs ---------- */
+.tab-btn { transition: background-color 0.15s; }
+.tab-btn[data-active="true"] {
+  background-color: #2563eb;
+  color: #ffffff;
+}
+.tab-content { display: none; }
+.tab-content[data-active="true"] { display: block; }
+
+/* ---------- Toast ---------- */
+#toast {
+  position: fixed;
+  bottom: 1.5rem;
+  left: 50%;
+  transform: translateX(-50%) translateY(200%);
+  background: #1f2937;
+  color: #fff;
+  padding: 0.75rem 1.25rem;
+  border-radius: 0.5rem;
+  font-size: 0.95rem;
+  opacity: 0;
+  transition: transform 0.25s, opacity 0.25s;
+  z-index: 1000;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+  max-width: 90vw;
+}
+#toast.show {
+  transform: translateX(-50%) translateY(0);
+  opacity: 1;
+}
+#toast.error { background: #b91c1c; }
+#toast.success { background: #15803d; }
+
+/* ---------- Modal ---------- */
+.modal-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 100;
+  padding: 1rem;
+}
+.modal-backdrop.hidden { display: none; }
+.modal-panel {
+  background: #fff;
+  border-radius: 0.75rem;
+  width: 100%;
+  max-width: 640px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 25px 50px rgba(0,0,0,0.25);
+}
+.modal-panel.wide { max-width: 960px; }
+
+/* ---------- Tables ---------- */
+.table-basic { width: 100%; border-collapse: collapse; }
+.table-basic th, .table-basic td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid #e5e7eb;
+  text-align: left;
+  vertical-align: middle;
+}
+.table-basic th {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  color: #6b7280;
+  letter-spacing: 0.04em;
+  background: #f9fafb;
+  position: sticky; top: 0;
+}
+.table-basic tr:hover td { background: #f9fafb; }
+
+/* ---------- Search dropdown ---------- */
+.search-dropdown {
+  position: absolute;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  max-height: 320px;
+  overflow-y: auto;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.08);
+  z-index: 50;
+  width: 100%;
+}
+.search-dropdown .item {
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  display: flex; justify-content: space-between; gap: 0.5rem;
+}
+.search-dropdown .item:hover,
+.search-dropdown .item.active {
+  background: #eff6ff;
+}
+
+/* ---------- Labels grid (for A4) ---------- */
+.label-card {
+  position: relative;
+  border: 1px dashed #e5e7eb;
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  text-align: center;
+  background: #fff;
+  display: flex; flex-direction: column; align-items: center; gap: 0.25rem;
+  cursor: pointer;
+  user-select: none;
+}
+.label-card .picker {
+  position: absolute; top: 6px; left: 6px;
+}
+.label-card .name {
+  font-weight: 600;
+  font-size: 0.85rem;
+  line-height: 1.15;
+  max-height: 2.3em;
+  overflow: hidden;
+}
+.label-card .codes {
+  display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+  width: 100%;
+}
+.label-card .shortcode {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8rem;
+  letter-spacing: 0.05em;
+}
+
+/* ---------- Print ---------- */
+.print-area { display: none; }
+
+@media print {
+  @page { margin: 8mm; }
+  body { background: #fff !important; }
+  body > *:not(.print-area) { display: none !important; }
+  .print-area { display: block !important; }
+
+  /* Receipts are 80mm wide */
+  .print-receipt {
+    width: 72mm;
+    margin: 0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px;
+    color: #000;
+  }
+  .print-receipt h1 { font-size: 14px; margin: 0 0 2px; text-align: center; }
+  .print-receipt .meta { text-align: center; margin-bottom: 6px; font-size: 10px; }
+  .print-receipt table { width: 100%; border-collapse: collapse; }
+  .print-receipt th, .print-receipt td {
+    padding: 2px 0; text-align: left; border-bottom: 1px dashed #000;
+    vertical-align: top;
+  }
+  .print-receipt th:last-child, .print-receipt td:last-child { text-align: right; }
+  .print-receipt .totals { margin-top: 6px; border-top: 1px solid #000; padding-top: 4px; }
+  .print-receipt .totals .row { display: flex; justify-content: space-between; }
+  .print-receipt .footer { text-align: center; margin-top: 8px; font-size: 10px; }
+
+  /* Labels — A4, 3 columns x 10 rows = 30 labels */
+  .print-labels {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 3mm;
+    padding: 5mm;
+  }
+  .print-labels .label-card {
+    border: none;
+    padding: 2mm;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  .print-labels .label-card .name { font-size: 10pt; }
+  .print-labels .label-card .shortcode { font-size: 9pt; }
+  .print-labels .label-card svg,
+  .print-labels .label-card canvas,
+  .print-labels .label-card img { max-width: 100%; height: auto; }
+}
+
+/* ---------- Utility ---------- */
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.stock-low { color: #b91c1c; font-weight: 600; }
+.stock-ok { color: #15803d; }
+.no-scroll { overflow: hidden; }

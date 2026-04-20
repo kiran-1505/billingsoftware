@@ -1,0 +1,16 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# Local runtime artifacts
+node_modules/
+.env
+*.log
+
+# User data backups (don't commit real shop data)
+toolbill-backup-*.json
