@@ -20,6 +20,17 @@ nav {
 #btn-home:hover { background: #f1f5f9; }
 #btn-home:hover .font-bold { color: #2563eb; }
 
+.admin-login-btn {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 0.78rem; font-weight: 600;
+  color: #475569; background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px; padding: 5px 10px;
+  cursor: pointer; white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+.admin-login-btn:hover { background: #e2e8f0; color: #0f172a; }
+
 /* Tab buttons — pill style */
 .tab-btn {
   font-size: 0.82rem;

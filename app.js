@@ -22,6 +22,8 @@ const DEFAULT_SETTINGS = {
   invoicePrefix: 'INV-',
   nextInvoiceNo: 1,
   footer: 'Thank you! Visit again.',
+  adminUser: 'admin',
+  adminPass: 'admin123',
 };
 
 // ========== State ==========
@@ -34,6 +36,7 @@ const state = {
   cart: [],                // [{productId, shortCode, name, price, qty, unit}]
   searchResults: [],
   searchActive: -1,
+  adminLoggedIn: false,
   selectedLabels: new Set(),
   showLowOnly: false,
   bulkPreview: null,
@@ -198,6 +201,8 @@ async function init() {
   wireModalClose();
   wireDateInputs();
   wireGlobalScanner();
+  await wireAdmin();
+  applyAdminState();
 
   // Default tab
   switchTab('billing');
@@ -276,7 +281,13 @@ function switchTab(name) {
 }
 
 function wireTabs() {
-  $$('.tab-btn').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.tab)));
+  $$('.tab-btn').forEach(b => b.addEventListener('click', () => {
+    if (b.classList.contains('admin-tab') && !state.adminLoggedIn) {
+      openAdminModal();
+      return;
+    }
+    switchTab(b.dataset.tab);
+  }));
   $('#btn-home').addEventListener('click', () => {
     switchTab('billing');
     $('#bill-search').focus();
@@ -1180,8 +1191,11 @@ async function deleteDraft(id) {
 }
 
 // ----- Save & Print -----
+let _saving = false;
 async function saveAndPrintBill() {
+  if (_saving) return;           // prevent double-click duplicates
   if (!state.cart.length) return toast('Cart is empty', 'error');
+  _saving = true;
 
   const s = state.settings;
   const invoiceNo = `${s.invoicePrefix}${String(s.nextInvoiceNo).padStart(4, '0')}`;
@@ -1247,6 +1261,8 @@ async function saveAndPrintBill() {
   } catch (e) {
     console.error(e);
     toast('Save failed: ' + e.message, 'error');
+  } finally {
+    _saving = false;
   }
 }
 
@@ -1256,10 +1272,7 @@ function renderBillToPrintArea(invoice) {
   const dateStr = d.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
   const itemsHTML = invoice.items.map(l => `
     <tr>
-      <td>
-        ${escapeHTML(l.name)}
-        <div style="font-size:9px;color:#555">${escapeHTML(l.shortCode)}</div>
-      </td>
+      <td>${escapeHTML(l.name)}</td>
       <td style="text-align:right">${l.qty}</td>
       <td style="text-align:right">${fmtMoney(l.price)}</td>
       <td style="text-align:right">${fmtMoney(l.price * l.qty)}</td>
@@ -2059,6 +2072,74 @@ function wireDateInputs() {
       }
     });
   });
+}
+
+// ========== ADMIN AUTH ==========
+function applyAdminState() {
+  const loggedIn = state.adminLoggedIn;
+  // Show/hide admin-only tabs
+  $$('.admin-tab').forEach(btn => {
+    btn.style.display = loggedIn ? '' : 'none';
+  });
+  // Update admin button label
+  const label = $('#admin-btn-label');
+  if (label) label.textContent = loggedIn ? 'Admin ✓' : 'Admin';
+  const btn = $('#btn-admin-login');
+  if (btn) btn.style.background = loggedIn ? '#dcfce7' : '';
+  if (btn) btn.style.color      = loggedIn ? '#15803d' : '';
+}
+
+function openAdminModal() {
+  // Show the right panel depending on login state
+  $('#admin-login-form').classList.toggle('hidden', state.adminLoggedIn);
+  $('#admin-logout-form').classList.toggle('hidden', !state.adminLoggedIn);
+  if (state.adminLoggedIn) {
+    $('#admin-logged-user').textContent = state.settings.adminUser || 'admin';
+  } else {
+    $('#admin-username').value = '';
+    $('#admin-password').value = '';
+    $('#admin-login-error').classList.add('hidden');
+  }
+  openModal('modal-admin');
+  if (!state.adminLoggedIn) setTimeout(() => $('#admin-username').focus(), 50);
+}
+
+async function wireAdmin() {
+  $('#btn-admin-login').addEventListener('click', openAdminModal);
+
+  $('#btn-admin-submit').addEventListener('click', attemptAdminLogin);
+  $('#admin-password').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') attemptAdminLogin();
+  });
+
+  $('#btn-admin-logout').addEventListener('click', () => {
+    state.adminLoggedIn = false;
+    applyAdminState();
+    // If currently on an admin-only tab, go back to billing
+    const active = document.querySelector('.tab-btn[data-active="true"]');
+    if (active && active.classList.contains('admin-tab')) switchTab('billing');
+    closeAnyModal();
+    toast('Logged out', '');
+  });
+
+
+}
+
+async function attemptAdminLogin() {
+  const user = $('#admin-username').value.trim();
+  const pass = $('#admin-password').value;
+  const storedUser = state.settings.adminUser || 'admin';
+  const storedPass = state.settings.adminPass || 'admin123';
+  if (user === storedUser && pass === storedPass) {
+    state.adminLoggedIn = true;
+    applyAdminState();
+    closeAnyModal();
+    toast('Welcome, ' + storedUser, 'success');
+  } else {
+    $('#admin-login-error').classList.remove('hidden');
+    $('#admin-password').value = '';
+    $('#admin-password').focus();
+  }
 }
 
 // ========== Boot ==========
