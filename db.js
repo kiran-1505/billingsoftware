@@ -1,8 +1,8 @@
 // db.js — IndexedDB wrapper for ToolBill
-// Stores: products, invoices, stockMovements, settings
+// Stores: products, invoices, stockMovements, settings, categories, drafts
 
 const DB_NAME = 'toolbill';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 let _dbPromise = null;
 
@@ -30,6 +30,15 @@ function openDB() {
       }
       if (!db.objectStoreNames.contains('settings')) {
         db.createObjectStore('settings', { keyPath: 'key' });
+      }
+      // v2: categories + drafts
+      if (!db.objectStoreNames.contains('categories')) {
+        const s = db.createObjectStore('categories', { keyPath: 'id', autoIncrement: true });
+        s.createIndex('name', 'name', { unique: true });
+      }
+      if (!db.objectStoreNames.contains('drafts')) {
+        const s = db.createObjectStore('drafts', { keyPath: 'id', autoIncrement: true });
+        s.createIndex('date', 'date', { unique: false });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -88,20 +97,31 @@ export const db = {
     return await req2promise(idx.get(shortCode));
   },
 
-  async nextShortCode(category) {
-    const prefix = (category || 'GN').toUpperCase();
+  // Random short code: 3 letters + 5 digits, separated by '-'
+  //   e.g. KMR-48217, XQT-90432
+  // Tries up to 25 times to avoid collision with an existing code.
+  async nextShortCode() {
     const products = await this.all('products');
-    let max = 0;
-    const re = new RegExp(`^${prefix}-(\\d{4})$`);
-    for (const p of products) {
-      const m = p.shortCode && p.shortCode.match(re);
-      if (m) {
-        const n = parseInt(m[1], 10);
-        if (n > max) max = n;
-      }
+    const used = new Set(products.map(p => (p.shortCode || '').toUpperCase()));
+    const ALPHA = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const pickLetters = () => Array.from({ length: 3 }, () =>
+      ALPHA[Math.floor(Math.random() * ALPHA.length)]
+    ).join('');
+    const pickDigits = () =>
+      String(Math.floor(Math.random() * 100000)).padStart(5, '0');
+    for (let i = 0; i < 25; i++) {
+      const code = `${pickLetters()}-${pickDigits()}`;
+      if (!used.has(code)) return code;
     }
-    const next = (max + 1).toString().padStart(4, '0');
-    return `${prefix}-${next}`;
+    // Extremely unlikely fallback — append timestamp suffix
+    return `${pickLetters()}-${pickDigits()}-${Date.now().toString(36).slice(-3)}`;
+  },
+
+  // ----- Categories -----
+  async getCategoryByName(name) {
+    const s = await tx('categories');
+    const idx = s.index('name');
+    return await req2promise(idx.get(name));
   },
 
   // ----- Settings -----
@@ -117,19 +137,21 @@ export const db = {
 
   // ----- Backup / restore -----
   async exportAll() {
-    const [products, invoices, stockMovements, settingsArr] = await Promise.all([
+    const [products, invoices, stockMovements, settingsArr, categories, drafts] = await Promise.all([
       this.all('products'),
       this.all('invoices'),
       this.all('stockMovements'),
       this.all('settings'),
+      this.all('categories'),
+      this.all('drafts'),
     ]);
     const settings = {};
     for (const s of settingsArr) settings[s.key] = s.value;
     return {
       app: 'toolbill',
-      version: 1,
+      version: 2,
       exportedAt: new Date().toISOString(),
-      products, invoices, stockMovements, settings,
+      products, invoices, stockMovements, settings, categories, drafts,
     };
   },
 
@@ -137,7 +159,7 @@ export const db = {
     if (!data || data.app !== 'toolbill') throw new Error('Not a ToolBill backup');
     const d = await openDB();
     await new Promise((resolve, reject) => {
-      const t = d.transaction(['products','invoices','stockMovements','settings'], 'readwrite');
+      const t = d.transaction(['products','invoices','stockMovements','settings','categories','drafts'], 'readwrite');
       t.oncomplete = resolve;
       t.onerror = () => reject(t.error);
       t.onabort = () => reject(t.error || new Error('transaction aborted'));
@@ -145,10 +167,14 @@ export const db = {
       const iStore = t.objectStore('invoices');
       const mStore = t.objectStore('stockMovements');
       const sStore = t.objectStore('settings');
-      pStore.clear(); iStore.clear(); mStore.clear(); sStore.clear();
+      const cStore = t.objectStore('categories');
+      const dStore = t.objectStore('drafts');
+      pStore.clear(); iStore.clear(); mStore.clear(); sStore.clear(); cStore.clear(); dStore.clear();
       (data.products || []).forEach(p => pStore.put(p));
       (data.invoices || []).forEach(i => iStore.put(i));
       (data.stockMovements || []).forEach(m => mStore.put(m));
+      (data.categories || []).forEach(c => cStore.put(c));
+      (data.drafts || []).forEach(d => dStore.put(d));
       const settings = data.settings || {};
       Object.keys(settings).forEach(k => sStore.put({ key: k, value: settings[k] }));
     });
@@ -160,6 +186,8 @@ export const db = {
       this.clear('invoices'),
       this.clear('stockMovements'),
       this.clear('settings'),
+      this.clear('categories'),
+      this.clear('drafts'),
     ]);
   },
 };

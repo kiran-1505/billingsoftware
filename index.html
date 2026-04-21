@@ -18,108 +18,145 @@
 
   <link rel="stylesheet" href="styles.css" />
 </head>
-<body class="bg-gray-100 min-h-screen">
+<body class="bg-white min-h-screen">
   <!-- ===== TOP NAV ===== -->
   <nav class="bg-white shadow sticky top-0 z-30">
-    <div class="max-w-7xl mx-auto px-3 py-2 flex items-center gap-2 flex-wrap">
-      <div class="flex items-center gap-2 mr-2">
+    <div class="w-full px-4 py-2 flex items-center gap-2 flex-wrap">
+      <button id="btn-home" class="flex items-center gap-2 mr-2 bg-transparent border-none cursor-pointer select-none" title="Go to Sell">
         <div class="w-8 h-8 rounded bg-blue-600 text-white font-bold flex items-center justify-center">T</div>
         <div class="font-bold text-lg text-gray-800">ToolBill</div>
-      </div>
+      </button>
       <div class="flex-1 flex gap-1 overflow-x-auto">
-        <button class="tab-btn px-3 py-2 rounded text-sm font-medium text-gray-700 hover:bg-gray-100" data-tab="billing">Billing</button>
-        <button class="tab-btn px-3 py-2 rounded text-sm font-medium text-gray-700 hover:bg-gray-100" data-tab="products">Products</button>
-        <button class="tab-btn px-3 py-2 rounded text-sm font-medium text-gray-700 hover:bg-gray-100" data-tab="inventory">Inventory</button>
-        <button class="tab-btn px-3 py-2 rounded text-sm font-medium text-gray-700 hover:bg-gray-100" data-tab="labels">Labels</button>
-        <button class="tab-btn px-3 py-2 rounded text-sm font-medium text-gray-700 hover:bg-gray-100" data-tab="reports">Reports</button>
-        <button class="tab-btn px-3 py-2 rounded text-sm font-medium text-gray-700 hover:bg-gray-100" data-tab="settings">Settings</button>
+        <button class="tab-btn" data-tab="billing">Sell</button>
+        <button class="tab-btn" data-tab="products">Products</button>
+        <button class="tab-btn" data-tab="inventory">Inventory</button>
+        <button class="tab-btn" data-tab="daily">Daily Sales</button>
+        <button class="tab-btn" data-tab="labels">Labels</button>
+        <button class="tab-btn" data-tab="reports">Reports</button>
+        <button class="tab-btn" data-tab="settings">Settings</button>
       </div>
       <div id="status-indicator" class="text-xs text-gray-500 hidden sm:block"></div>
     </div>
   </nav>
 
-  <main class="max-w-7xl mx-auto p-3 md:p-5">
+  <main class="w-full px-4 py-4">
 
-    <!-- ========== BILLING TAB ========== -->
+    <!-- ========== SELL (BILLING) TAB ========== -->
     <section id="tab-billing" class="tab-content">
-      <div class="grid md:grid-cols-3 gap-4">
-        <!-- Left: search + cart -->
-        <div class="md:col-span-2 bg-white rounded-lg shadow p-4">
-          <div class="relative">
+      <!-- Top bar: search + drafts -->
+      <div class="bg-white rounded-lg shadow p-3 mb-3">
+        <div class="flex gap-2 items-center flex-wrap">
+          <div class="relative flex-1 min-w-[260px]">
             <input
               id="bill-search"
               type="text"
               class="w-full p-3 text-lg border-2 border-blue-500 rounded-lg focus:outline-none focus:border-blue-700"
-              placeholder="Scan QR / type code (HT-0042) / search name... (F2)"
+              placeholder="Scan QR / type code (KMR-48217) / search name... (F2)"
               autocomplete="off"
             />
             <div id="search-dropdown" class="search-dropdown hidden"></div>
           </div>
-          <p class="text-xs text-gray-500 mt-1">
-            Tip: <span class="mono">5*HT-0042</span> adds 5 units. Press <span class="mono">Enter</span> to add; arrow keys to pick from search.
-          </p>
+          <button id="btn-open-drafts" class="bg-amber-100 text-amber-800 hover:bg-amber-200 font-semibold px-4 py-3 rounded-lg border border-amber-300">
+            Drafts <span id="drafts-count" class="bg-amber-500 text-white text-xs rounded-full px-2 py-0.5 ml-1">0</span>
+          </button>
+        </div>
+        <p class="text-xs text-gray-500 mt-1">
+          Tip: <span class="mono">5*KMR-48217</span> adds 5 units. Tap a product tile on the right to add to the bill.
+        </p>
+      </div>
 
-          <div class="mt-4 overflow-x-auto">
+      <!-- Main: cart (left) + category/product picker (right) -->
+      <div class="grid lg:grid-cols-[1.2fr_1fr] gap-3">
+
+        <!-- ===== LEFT: BILL / CART ===== -->
+        <div class="bg-white rounded-lg shadow flex flex-col sell-cart-panel">
+          <div class="p-3 border-b flex items-center gap-2">
+            <h3 class="font-semibold text-gray-800">Current Bill</h3>
+            <span id="cart-count-badge" class="text-xs bg-gray-100 text-gray-700 px-2 py-0.5 rounded-full">0 items</span>
+            <span id="active-draft-chip" class="hidden ml-1 text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full border border-amber-300">Draft <span id="active-draft-label" class="mono"></span></span>
+            <button id="btn-clear-cart" class="ml-auto text-sm text-red-600 hover:underline">Clear</button>
+          </div>
+
+          <div class="sell-cart-scroll">
             <table class="table-basic">
               <thead>
                 <tr>
                   <th>Item</th>
-                  <th>Code</th>
-                  <th class="w-24">Qty</th>
-                  <th class="text-right">Price</th>
-                  <th class="text-right">Total</th>
-                  <th></th>
+                  <th style="width:72px;padding-left:4px;padding-right:4px">Qty</th>
+                  <th style="width:150px;padding-left:4px;padding-right:4px" class="text-right">Price</th>
+                  <th style="width:110px" class="text-right">Total</th>
+                  <th style="width:32px"></th>
                 </tr>
               </thead>
               <tbody id="cart-body">
-                <tr><td colspan="6" class="text-center py-8 text-gray-400">Cart is empty — scan or search to add items</td></tr>
+                <tr><td colspan="5" class="text-center py-12 text-gray-400">Cart is empty — tap a product on the right, or scan / search above</td></tr>
               </tbody>
             </table>
           </div>
+
+          <!-- Sticky footer: customer + total + actions -->
+          <div class="border-t bg-gray-50 p-3 space-y-2">
+            <div class="grid grid-cols-2 gap-2">
+              <input id="customer-name" type="text" class="p-2 border rounded" placeholder="Customer name (optional)" />
+              <input id="amount-paid" type="number" step="0.01" min="0" class="p-2 border rounded" placeholder="Amount paid" />
+            </div>
+            <input id="bill-notes" type="text" class="w-full p-2 border rounded" placeholder="Notes (optional)" />
+
+            <div id="active-draft-banner" class="hidden text-xs bg-amber-50 text-amber-800 border border-amber-200 rounded p-2">
+              Editing draft <span class="mono" id="active-draft-banner-label"></span>.
+              <button id="btn-active-draft-detach" class="underline ml-1">Detach</button>
+            </div>
+
+            <div class="flex items-baseline justify-between pt-1">
+              <div>
+                <div class="text-[11px] text-gray-500 uppercase tracking-wide">Total payable</div>
+                <div class="text-xs text-gray-500"><span id="cart-qty">0</span> units · <span id="cart-count">0</span> lines</div>
+              </div>
+              <div class="text-4xl font-bold text-blue-700" id="cart-total">₹0.00</div>
+            </div>
+
+            <div class="grid grid-cols-3 gap-2 pt-1">
+              <button id="btn-save-draft" class="bg-amber-500 hover:bg-amber-600 text-white font-semibold py-3 rounded">Save Draft</button>
+              <button id="btn-save-print" class="col-span-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded text-lg">Save &amp; Print</button>
+            </div>
+            <p class="text-[11px] text-gray-400 text-center">F9 save &amp; print · F7 save draft · F2 focus search</p>
+          </div>
         </div>
 
-        <!-- Right: totals + actions -->
-        <div class="bg-white rounded-lg shadow p-4 h-fit md:sticky md:top-16">
-          <div class="flex justify-between mb-1 text-sm">
-            <span class="text-gray-600">Line items</span><span id="cart-count">0</span>
+        <!-- ===== RIGHT: CATEGORIES / PRODUCTS ===== -->
+        <div class="bg-white rounded-lg shadow flex flex-col sell-picker-panel">
+          <div class="p-3 border-b flex items-center gap-2">
+            <button id="btn-sell-back" class="hidden text-blue-600 hover:underline text-sm">&larr; Back</button>
+            <h3 id="sell-pane-title" class="font-semibold text-gray-800">Categories</h3>
+            <input id="sell-pane-search" type="text" placeholder="Filter..." class="ml-auto p-2 border rounded text-sm min-w-[140px]" />
           </div>
-          <div class="flex justify-between mb-1 text-sm">
-            <span class="text-gray-600">Total qty</span><span id="cart-qty">0</span>
-          </div>
-          <div class="flex justify-between text-3xl font-bold border-t pt-3 mt-2 mb-3">
-            <span>Total</span><span id="cart-total">₹0.00</span>
-          </div>
-          <p class="text-[11px] text-gray-400 mb-3">(No GST — handled separately)</p>
-
-          <label class="block text-xs text-gray-600 mb-1">Customer name (optional)</label>
-          <input id="customer-name" type="text" class="w-full p-2 border rounded mb-3" placeholder="Walk-in" />
-
-          <label class="block text-xs text-gray-600 mb-1">Amount paid (after bargain, optional)</label>
-          <input id="amount-paid" type="number" step="0.01" min="0" class="w-full p-2 border rounded mb-4" placeholder="e.g., 950" />
-
-          <label class="block text-xs text-gray-600 mb-1">Notes (optional)</label>
-          <input id="bill-notes" type="text" class="w-full p-2 border rounded mb-4" placeholder="" />
-
-          <div class="grid grid-cols-2 gap-2">
-            <button id="btn-clear-cart" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium py-3 rounded">Clear</button>
-            <button id="btn-save-print" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded">Save &amp; Print</button>
-          </div>
-          <p class="text-[11px] text-gray-400 mt-2 text-center">Shortcut: <span class="mono">F9</span> to save &amp; print</p>
+          <div id="sell-pane-body" class="sell-pane-body p-3"></div>
         </div>
       </div>
     </section>
 
     <!-- ========== PRODUCTS TAB ========== -->
     <section id="tab-products" class="tab-content">
-      <div class="bg-white rounded-lg shadow">
+      <!-- Category grid (shown first) -->
+      <div id="products-cat-view" class="bg-white rounded-lg shadow">
         <div class="p-4 flex flex-wrap items-center gap-2 border-b">
-          <input id="product-search" type="text" placeholder="Search by name or code..." class="flex-1 min-w-[200px] p-2 border rounded" />
-          <select id="product-category-filter" class="p-2 border rounded">
-            <option value="">All categories</option>
-          </select>
-          <button id="btn-add-product" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">+ Add Product</button>
-          <button id="btn-bulk-add" class="bg-gray-800 text-white px-4 py-2 rounded hover:bg-gray-900">Bulk Add</button>
-          <span id="product-count" class="text-sm text-gray-500 ml-auto"></span>
+          <h2 class="font-semibold text-gray-800">Browse by category</h2>
+          <input id="products-cat-search" type="text" placeholder="Search category..." class="ml-2 p-2 border rounded flex-1 min-w-[180px]" />
+          <button id="btn-manage-categories" class="bg-gray-200 text-gray-800 px-3 py-2 rounded hover:bg-gray-300">Manage Categories</button>
+          <button id="btn-add-product" class="bg-blue-600 text-white px-3 py-2 rounded hover:bg-blue-700">+ Add Product</button>
+          <button id="btn-bulk-add" class="bg-gray-800 text-white px-3 py-2 rounded hover:bg-gray-900">Bulk Add</button>
+        </div>
+        <div id="products-cat-grid" class="p-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3"></div>
+      </div>
+
+      <!-- Product list (shown after a category is picked) -->
+      <div id="products-list-view" class="bg-white rounded-lg shadow hidden">
+        <div class="p-4 flex flex-wrap items-center gap-2 border-b">
+          <button id="btn-products-back" class="text-blue-600 hover:underline text-sm">&larr; Categories</button>
+          <h2 id="products-list-title" class="font-semibold text-gray-800"></h2>
+          <input id="product-search" type="text" placeholder="Search name or code..." class="ml-auto p-2 border rounded min-w-[200px]" />
+          <button id="btn-add-product-2" class="bg-blue-600 text-white px-3 py-2 rounded hover:bg-blue-700">+ Add Product</button>
+          <span id="product-count" class="text-sm text-gray-500"></span>
         </div>
         <div class="overflow-x-auto">
           <table class="table-basic">
@@ -157,12 +194,24 @@
         </div>
       </div>
 
-      <div class="mt-4 bg-white rounded-lg shadow">
+      <!-- Category grid (shown first) -->
+      <div id="inv-cat-view" class="mt-4 bg-white rounded-lg shadow">
         <div class="p-4 flex flex-wrap items-center gap-2 border-b">
-          <h2 class="font-semibold text-gray-800">Stock levels</h2>
+          <h2 class="font-semibold text-gray-800">Stock by category</h2>
+          <input id="inv-cat-search" type="text" placeholder="Search category..." class="ml-2 p-2 border rounded flex-1 min-w-[180px]" />
           <button id="btn-grn" class="ml-auto bg-green-600 text-white px-3 py-2 rounded hover:bg-green-700">Receive Stock (GRN)</button>
           <button id="btn-adjust" class="bg-yellow-500 text-white px-3 py-2 rounded hover:bg-yellow-600">Adjust Stock</button>
           <button id="btn-show-low" class="bg-red-600 text-white px-3 py-2 rounded hover:bg-red-700">Low Stock Only</button>
+        </div>
+        <div id="inv-cat-grid" class="p-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3"></div>
+      </div>
+
+      <!-- Item list (shown after category click) -->
+      <div id="inv-list-view" class="mt-4 bg-white rounded-lg shadow hidden">
+        <div class="p-4 flex flex-wrap items-center gap-2 border-b">
+          <button id="btn-inv-back" class="text-blue-600 hover:underline text-sm">&larr; Categories</button>
+          <h2 id="inv-list-title" class="font-semibold text-gray-800"></h2>
+          <input id="inv-search" type="text" placeholder="Search items by name or code..." class="ml-auto p-2 border rounded min-w-[220px]" />
         </div>
         <div class="overflow-x-auto">
           <table class="table-basic">
@@ -179,18 +228,50 @@
           </table>
         </div>
       </div>
+    </section>
 
-      <div class="mt-4 bg-white rounded-lg shadow">
-        <div class="p-4 border-b">
-          <h2 class="font-semibold text-gray-800">Recent stock movements</h2>
+    <!-- ========== DAILY SALES TAB ========== -->
+    <section id="tab-daily" class="tab-content">
+      <div class="bg-white rounded-lg shadow">
+        <div class="p-4 flex flex-wrap items-center gap-2 border-b">
+          <h2 class="font-semibold text-gray-800">Daily sales tracking</h2>
+          <span class="text-xs text-gray-500 ml-1">Pick a date to see items sold that day</span>
+          <input id="daily-date" type="date" class="ml-auto p-2 border rounded" />
+          <button id="btn-daily-today" class="bg-gray-200 px-3 py-2 rounded">Today</button>
         </div>
-        <div class="overflow-x-auto">
-          <table class="table-basic">
-            <thead>
-              <tr><th>Date</th><th>Code</th><th>Item</th><th>Type</th><th class="text-right">Qty</th><th>Reason</th></tr>
-            </thead>
-            <tbody id="movements-body"></tbody>
-          </table>
+        <div class="grid md:grid-cols-3 gap-0">
+          <!-- Day list -->
+          <div class="md:col-span-1 border-r">
+            <div class="p-3 border-b flex items-center gap-2">
+              <input id="daily-search" type="text" placeholder="Filter days..." class="flex-1 p-2 border rounded text-sm" />
+            </div>
+            <div id="daily-days-list" class="max-h-[60vh] overflow-y-auto"></div>
+          </div>
+          <!-- Day details -->
+          <div class="md:col-span-2 p-4">
+            <div class="flex flex-wrap items-center gap-2 mb-3">
+              <h3 id="daily-day-title" class="font-semibold text-gray-800">Select a day</h3>
+              <span id="daily-day-stats" class="text-sm text-gray-600"></span>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="table-basic">
+                <thead>
+                  <tr>
+                    <th>Time</th>
+                    <th>Invoice</th>
+                    <th>Code</th>
+                    <th>Item</th>
+                    <th class="text-right">Qty</th>
+                    <th class="text-right">Price</th>
+                    <th class="text-right">Total</th>
+                  </tr>
+                </thead>
+                <tbody id="daily-items-body">
+                  <tr><td colspan="7" class="text-center py-8 text-gray-400">No day selected</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -338,7 +419,7 @@
 
       <div class="max-w-xl bg-white rounded-lg shadow p-4">
         <h2 class="font-semibold text-gray-800 mb-2">About</h2>
-        <p class="text-sm text-gray-600">ToolBill v1 — runs fully offline once installed. Press <span class="mono">F2</span> on any screen to jump to billing search.</p>
+        <p class="text-sm text-gray-600">ToolBill v2 — runs fully offline once installed. Press <span class="mono">F2</span> on any screen to jump to Sell search.</p>
       </div>
     </section>
   </main>
@@ -367,7 +448,7 @@
           </select>
         </div>
         <div>
-          <label class="block text-xs text-gray-600 mb-1">Selling price (₹) *</label>
+          <label class="block text-xs text-gray-600 mb-1">Selling price / MRP (₹) *</label>
           <input id="pm-price" type="number" step="0.01" min="0" class="w-full p-2 border rounded" />
         </div>
         <div>
@@ -401,9 +482,9 @@
         <h3 class="text-lg font-semibold">Bulk add products</h3>
         <button class="modal-close text-gray-500 text-2xl leading-none">&times;</button>
       </div>
-      <p class="text-sm text-gray-600 mb-2">Paste rows from Excel (tab or comma separated). Columns: <span class="mono">Name, Category (HT/PT/FS/LB/CH/AB/EL/AS/GN), Price, Unit (piece/set/...), Stock, Reorder</span>. Only Name, Category and Price are required.</p>
-      <textarea id="bulk-text" rows="10" class="w-full p-2 border rounded mono text-sm" placeholder="Hydraulic Jack 2 Ton	HT	1800	piece	3	1
-Spanner Set 10pc	HT	650	set	5	2"></textarea>
+      <p class="text-sm text-gray-600 mb-2">Paste rows from Excel (tab or comma separated). Columns: <span class="mono">Name, Category, Price, Unit (piece/set/...), Stock, Reorder</span>. Category must be one of your existing categories (case-insensitive). Only Name, Category and Price are required.</p>
+      <textarea id="bulk-text" rows="10" class="w-full p-2 border rounded mono text-sm" placeholder="Hydraulic Jack 2 Ton	Hand Tools	1800	piece	3	1
+Spanner Set 10pc	Hand Tools	650	set	5	2"></textarea>
       <div class="mt-3 flex justify-between items-center">
         <span id="bulk-parse-summary" class="text-sm text-gray-600"></span>
         <div class="flex gap-2">
@@ -425,7 +506,7 @@ Spanner Set 10pc	HT	650	set	5	2"></textarea>
       <div class="space-y-3">
         <div class="relative">
           <label class="block text-xs text-gray-600 mb-1">Product (scan / code / search)</label>
-          <input id="grn-search" type="text" class="w-full p-2 border rounded" placeholder="HT-0042 or name..." />
+          <input id="grn-search" type="text" class="w-full p-2 border rounded" placeholder="KMR-48217 or name..." />
           <div id="grn-dropdown" class="search-dropdown hidden"></div>
         </div>
         <div id="grn-selected" class="text-sm bg-gray-50 rounded p-2 hidden"></div>
@@ -490,6 +571,41 @@ Spanner Set 10pc	HT	650	set	5	2"></textarea>
       <div class="mt-4 flex justify-end gap-2">
         <button id="label-print" class="px-4 py-2 rounded bg-blue-600 text-white">Print</button>
         <button id="label-pdf" class="px-4 py-2 rounded bg-gray-800 text-white">Download PDF</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Drafts modal -->
+  <div id="modal-drafts" class="modal-backdrop hidden">
+    <div class="modal-panel wide p-4">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="text-lg font-semibold">Saved drafts</h3>
+        <button class="modal-close text-gray-500 text-2xl leading-none">&times;</button>
+      </div>
+      <div id="drafts-list" class="space-y-2 max-h-[65vh] overflow-y-auto">
+        <div class="text-sm text-gray-400">No saved drafts</div>
+      </div>
+      <div class="mt-4 flex justify-end gap-2">
+        <button class="modal-close px-4 py-2 rounded bg-gray-800 text-white">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Category manager -->
+  <div id="modal-category" class="modal-backdrop hidden">
+    <div class="modal-panel p-4">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="text-lg font-semibold">Manage categories</h3>
+        <button class="modal-close text-gray-500 text-2xl leading-none">&times;</button>
+      </div>
+      <div class="flex gap-2 mb-3">
+        <input id="cat-new-name" type="text" class="flex-1 p-2 border rounded" placeholder="New category name (e.g., Paint Supplies)" />
+        <button id="cat-add-btn" class="px-4 py-2 rounded bg-blue-600 text-white">Add</button>
+      </div>
+      <div id="cat-list" class="space-y-1 max-h-[50vh] overflow-y-auto"></div>
+      <p class="text-xs text-gray-500 mt-3">Categories with products cannot be deleted until products are moved.</p>
+      <div class="mt-4 flex justify-end gap-2">
+        <button class="modal-close px-4 py-2 rounded bg-gray-800 text-white">Done</button>
       </div>
     </div>
   </div>
