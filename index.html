@@ -616,11 +616,31 @@ Spanner Set 10pc	Hand Tools	650	set	5	2"></textarea>
   <!-- ====== Print area (hidden until print) ====== -->
   <div class="print-area" id="print-area"></div>
 
-  <!-- ====== Register service worker ====== -->
+  <!-- ====== Register service worker + update prompt ====== -->
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('sw.js').catch(err => console.warn('SW registration failed:', err));
+        navigator.serviceWorker.register('sw.js').then(reg => {
+          reg.addEventListener('updatefound', () => {
+            const newSW = reg.installing;
+            newSW.addEventListener('statechange', () => {
+              // A new SW has installed and the old one is still active — prompt user
+              if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
+                const banner = document.createElement('div');
+                banner.id = 'update-banner';
+                banner.innerHTML = `
+                  <span>🎉 New version available</span>
+                  <button onclick="navigator.serviceWorker.controller.postMessage('skipWaiting'); this.parentElement.remove();"
+                          style="margin-left:12px;padding:4px 12px;background:#fff;color:#2563eb;border:none;border-radius:5px;font-weight:600;cursor:pointer;">
+                    Update now
+                  </button>`;
+                document.body.appendChild(banner);
+              }
+            });
+          });
+          // When the new SW takes control, reload so fresh files are served
+          navigator.serviceWorker.addEventListener('controllerchange', () => location.reload());
+        }).catch(err => console.warn('SW registration failed:', err));
       });
     }
   </script>

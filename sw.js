@@ -1,5 +1,5 @@
 // sw.js — Service worker for offline PWA support
-const VERSION = 'toolbill-v5';
+const VERSION = 'toolbill-v6';
 const APP_SHELL = [
   './',
   './index.html',
@@ -16,6 +16,10 @@ const CDN = [
   'https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js',
   'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
 ];
+
+self.addEventListener('message', (e) => {
+  if (e.data === 'skipWaiting') self.skipWaiting();
+});
 
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
