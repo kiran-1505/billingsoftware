@@ -151,6 +151,7 @@ function closeModal(id) {
 function closeAnyModal() {
   $$('.modal-backdrop').forEach(m => m.classList.add('hidden'));
   document.body.classList.remove('no-scroll');
+  closeCameraScanner();   // always stop camera stream when any modal closes
 }
 
 function debounce(fn, ms = 120) {
@@ -203,6 +204,7 @@ async function init() {
   wireGlobalScanner();
   await wireAdmin();
   applyAdminState();
+  wireCameraScanner();
 
   // Default tab
   switchTab('billing');
@@ -2072,6 +2074,79 @@ function wireDateInputs() {
       }
     });
   });
+}
+
+// ========== CAMERA BARCODE SCANNER (ZXing — works on all browsers) ==========
+let _zxingReader = null;
+let _lastScannedCode = '';
+let _lastScannedTime = 0;
+
+function wireCameraScanner() {
+  const btn = $('#btn-camera-scan');
+  if (!btn) return;
+  btn.addEventListener('click', openCameraScanner);
+  $('#btn-camera-close').addEventListener('click', closeCameraScanner);
+}
+
+async function openCameraScanner() {
+  const modal   = $('#modal-camera');
+  const video   = $('#camera-preview');
+  const status  = $('#cam-status');
+
+  modal.classList.remove('hidden');
+  status.textContent = 'Starting camera…';
+  status.style.background = '';
+  $('#cam-last-scan').textContent = '';
+
+  if (!window.ZXing) {
+    status.textContent = 'Scanner library not loaded — check internet connection';
+    return;
+  }
+
+  try {
+    _zxingReader = new ZXing.BrowserMultiFormatReader();
+
+    // Pass null → ZXing picks default/only camera automatically (no device enumeration needed)
+    await _zxingReader.decodeFromVideoDevice(null, 'camera-preview', (result, err) => {
+      if (!result) return;
+      const code = result.getText();
+      const now  = Date.now();
+
+      // Debounce — ignore same code within 2 s
+      if (code === _lastScannedCode && now - _lastScannedTime < 2000) return;
+      _lastScannedCode = code;
+      _lastScannedTime = now;
+
+      // Green flash
+      status.textContent = '✓ ' + code;
+      status.style.background = 'rgba(22,163,74,0.85)';
+      setTimeout(() => {
+        if (status) { status.textContent = 'Point camera at a barcode…'; status.style.background = ''; }
+      }, 900);
+
+      // Add item to cart
+      const searchEl = $('#bill-search');
+      searchEl.value = code;
+      handleEnterInBillSearch();
+      searchEl.value = '';
+      $('#cam-last-scan').textContent = 'Last scanned: ' + code;
+    });
+
+    status.textContent = 'Point camera at a barcode…';
+  } catch (err) {
+    status.textContent = err.name === 'NotAllowedError'
+      ? '⚠ Camera access denied — allow camera in browser settings'
+      : '⚠ Could not start camera: ' + err.message;
+  }
+}
+
+function closeCameraScanner() {
+  if (_zxingReader) {
+    _zxingReader.reset();
+    _zxingReader = null;
+  }
+  $('#modal-camera').classList.add('hidden');
+  _lastScannedCode = '';
 }
 
 // ========== ADMIN AUTH ==========
