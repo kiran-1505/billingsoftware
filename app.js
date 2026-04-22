@@ -2133,12 +2133,15 @@ async function openCameraScanner() {
         if (status) { status.textContent = 'Point camera at a barcode…'; status.style.background = ''; }
       }, 900);
 
+      // Normalize common camera misreads: '-' sometimes scanned as '%'
+      const normalised = code.replace(/%/g, '-');
+
       // Add item to cart
       const searchEl = $('#bill-search');
-      searchEl.value = code;
+      searchEl.value = normalised;
       handleEnterInBillSearch();
       searchEl.value = '';
-      $('#cam-last-scan').textContent = 'Last scanned: ' + code;
+      $('#cam-last-scan').textContent = 'Last scanned: ' + normalised;
     });
 
     status.textContent = 'Point camera at a barcode…';
