@@ -675,23 +675,48 @@ Spanner Set 10pc	Hand Tools	650	set	5	2"></textarea>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('sw.js').then(reg => {
-          reg.addEventListener('updatefound', () => {
-            const newSW = reg.installing;
-            newSW.addEventListener('statechange', () => {
-              // A new SW has installed and the old one is still active — prompt user
-              if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
-                const banner = document.createElement('div');
-                banner.id = 'update-banner';
-                banner.innerHTML = `
-                  <span>🎉 New version available</span>
-                  <button onclick="navigator.serviceWorker.controller.postMessage('skipWaiting'); this.parentElement.remove();"
-                          style="margin-left:12px;padding:4px 12px;background:#fff;color:#2563eb;border:none;border-radius:5px;font-weight:600;cursor:pointer;">
-                    Update now
-                  </button>`;
-                document.body.appendChild(banner);
-              }
+
+          function showUpdateBanner() {
+            if (document.getElementById('update-banner')) return; // already shown
+            const banner = document.createElement('div');
+            banner.id = 'update-banner';
+            banner.innerHTML = `
+              <span>🎉 New version available</span>
+              <button id="btn-backup-before-update"
+                      style="margin-left:12px;padding:4px 12px;background:rgba(255,255,255,0.2);color:#fff;border:1px solid rgba(255,255,255,0.5);border-radius:5px;font-weight:600;cursor:pointer;">
+                Back up first
+              </button>
+              <button id="btn-do-update"
+                      style="margin-left:8px;padding:4px 12px;background:#fff;color:#2563eb;border:none;border-radius:5px;font-weight:600;cursor:pointer;">
+                Update now
+              </button>`;
+            document.body.appendChild(banner);
+            document.getElementById('btn-backup-before-update').addEventListener('click', () => {
+              if (window.exportBackup) window.exportBackup();
+              else alert('Open Settings tab → Export backup to save your data before updating.');
             });
+            document.getElementById('btn-do-update').addEventListener('click', () => {
+              banner.remove();
+              if (reg.waiting) reg.waiting.postMessage('skipWaiting');
+            });
+          }
+
+          function trackInstalling(sw) {
+            sw.addEventListener('statechange', () => {
+              if (sw.state === 'installed' && navigator.serviceWorker.controller) showUpdateBanner();
+            });
+          }
+
+          // Already waiting (e.g. app was open when Netlify deployed)
+          if (reg.waiting) showUpdateBanner();
+
+          reg.addEventListener('updatefound', () => {
+            trackInstalling(reg.installing);
           });
+
+          // Force-check for a new SW every time the app opens
+          reg.update().catch(() => {});
+
           // When the new SW takes control, reload so fresh files are served
           navigator.serviceWorker.addEventListener('controllerchange', () => location.reload());
         }).catch(err => console.warn('SW registration failed:', err));

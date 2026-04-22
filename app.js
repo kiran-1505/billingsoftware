@@ -1992,6 +1992,7 @@ async function exportBackup() {
   downloadBlob(new Blob([json], { type: 'application/json' }), `toolbill-backup-${todayISO()}.json`);
   toast('Backup downloaded', 'success');
 }
+window.exportBackup = exportBackup; // Exposed so the update banner can trigger it
 
 async function importBackup(e) {
   const f = e.target.files[0];
