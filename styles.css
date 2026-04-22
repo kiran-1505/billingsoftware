@@ -445,6 +445,49 @@ textarea:focus {
   input, select { min-height: 44px; font-size: 16px; }
 }
 
+/* ── Camera scan button ──────────────────────────────── */
+.cam-scan-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 10px 16px;
+  background: #2563eb; color: #fff;
+  border: none; border-radius: 8px;
+  font-size: 0.88rem; font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+.cam-scan-btn:hover { background: #1d4ed8; }
+
+/* Aim guide box inside camera preview */
+.cam-aim-box {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 65%; height: 38%;
+  border: 2px solid rgba(255,255,255,0.7);
+  border-radius: 8px;
+  box-shadow: 0 0 0 9999px rgba(0,0,0,0.35);
+  pointer-events: none;
+}
+.cam-aim-box::before, .cam-aim-box::after {
+  content: '';
+  position: absolute;
+  width: 18px; height: 18px;
+  border-color: #2563eb; border-style: solid;
+}
+.cam-aim-box::before { top: -2px; left: -2px; border-width: 3px 0 0 3px; border-radius: 6px 0 0 0; }
+.cam-aim-box::after  { bottom: -2px; right: -2px; border-width: 0 3px 3px 0; border-radius: 0 0 6px 0; }
+
+.cam-status {
+  position: absolute; bottom: 10px; left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0,0,0,0.6);
+  color: #fff; font-size: 0.8rem; font-weight: 500;
+  padding: 5px 14px; border-radius: 20px;
+  white-space: nowrap;
+  transition: background 0.2s;
+}
+
 /* ── Update banner ───────────────────────────────────── */
 #update-banner {
   position: fixed;
