@@ -1761,9 +1761,14 @@ async function renderDaily() {
     $('#daily-date').value = state.dailySelectedDate;
   }
 
-  // Days list (filterable)
+  // Days list (filterable by date or customer name)
   const q = $('#daily-search').value.trim().toLowerCase();
-  const filteredDays = days.filter(d => !q || d.date.includes(q));
+  const filteredDays = days.filter(d => {
+    if (!q) return true;
+    if (d.date.includes(q)) return true;
+    // Match if any invoice in this day has the customer name matching
+    return d.invoices.some(inv => (inv.customer || '').toLowerCase().includes(q));
+  });
   const daysBox = $('#daily-days-list');
   if (!filteredDays.length) {
     daysBox.innerHTML = `<div class="p-4 text-sm text-gray-400 text-center">No sales yet</div>`;
@@ -1812,7 +1817,7 @@ async function renderDaily() {
       lines.push({
         time: inv.date,
         invoiceNo: inv.invoiceNo,
-        shortCode: l.shortCode,
+        customer: inv.customer || '',
         name: l.name,
         qty: l.qty,
         price: l.price,
@@ -1828,10 +1833,13 @@ async function renderDaily() {
   }
   body.innerHTML = lines.map(l => {
     const t = new Date(l.time);
+    const customerHtml = l.customer
+      ? `<span class="text-gray-800">${escapeHTML(l.customer)}</span>`
+      : `<span class="text-gray-300">—</span>`;
     return `<tr>
       <td class="text-xs">${t.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</td>
       <td class="mono text-sm">${escapeHTML(l.invoiceNo || '')}</td>
-      <td class="mono text-sm">${escapeHTML(l.shortCode || '')}</td>
+      <td class="text-sm">${customerHtml}</td>
       <td>${escapeHTML(l.name)}</td>
       <td class="text-right">${fmtInt(l.qty)}</td>
       <td class="text-right">${fmtMoney(l.price)}</td>
