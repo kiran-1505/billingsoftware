@@ -714,16 +714,18 @@ Spanner Set 10pc	Hand Tools	650	set	5	2"></textarea>
               const status = document.getElementById('update-status');
               status.textContent = 'Checking…';
               reg.update().then(() => {
-                if (reg.waiting) {
-                  showUpdateReady();
-                } else {
-                  // Wait a moment for updatefound to fire, then confirm up to date
-                  setTimeout(() => {
-                    if (!document.getElementById('update-action')?.classList.contains('hidden') === false) return;
-                    if (!reg.waiting) status.textContent = '✓ You\'re on the latest version';
-                  }, 3000);
-                }
-              }).catch(() => { status.textContent = 'Could not check — make sure you\'re online'; });
+                // Give updatefound + install a moment to fire, then decide
+                setTimeout(() => {
+                  if (reg.waiting) {
+                    showUpdateReady();
+                    status.textContent = '';
+                  } else {
+                    status.textContent = '✓ Already on the latest version';
+                  }
+                }, 1500);
+              }).catch(() => {
+                status.textContent = '⚠ Could not check — make sure you\'re online';
+              });
             }
             if (e.target.id === 'btn-backup-update') {
               if (window.exportBackup) window.exportBackup();
