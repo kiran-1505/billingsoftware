@@ -376,7 +376,6 @@
     <!-- ========== SETTINGS TAB ========== -->
     <section id="tab-settings" class="tab-content">
       <div class="max-w-xl bg-white rounded-lg shadow p-4 mb-4">
-        <p class="text-xs text-gray-400 mb-4">App version: <strong>v11</strong></p>
         <h2 class="font-semibold text-gray-800 mb-4">Shop info (prints on bill)</h2>
         <div class="space-y-3">
           <div>
@@ -429,8 +428,17 @@
       </div>
 
       <div class="max-w-xl bg-white rounded-lg shadow p-4">
-        <h2 class="font-semibold text-gray-800 mb-2">About</h2>
-        <p class="text-sm text-gray-600">ToolBill v2 — runs fully offline once installed. Press <span class="mono">F2</span> on any screen to jump to Sell search.</p>
+        <h2 class="font-semibold text-gray-800 mb-2">App update</h2>
+        <p class="text-sm text-gray-600 mb-3">Current version: <strong id="current-sw-version">v14</strong></p>
+        <div class="flex items-center gap-3 flex-wrap">
+          <button id="btn-check-update" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Check for updates</button>
+          <span id="update-status" class="text-sm text-gray-500"></span>
+        </div>
+        <div id="update-action" class="hidden mt-3 p-3 bg-blue-50 border border-blue-200 rounded flex items-center gap-3 flex-wrap">
+          <span class="text-sm text-blue-800 font-medium">🎉 New version available!</span>
+          <button id="btn-backup-update" class="text-sm bg-white border border-blue-300 text-blue-700 px-3 py-1 rounded hover:bg-blue-50">Back up first</button>
+          <button id="btn-apply-update" class="text-sm bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700">Update now</button>
+        </div>
       </div>
     </section>
   </main>
@@ -671,55 +679,60 @@ Spanner Set 10pc	Hand Tools	650	set	5	2"></textarea>
   <!-- ====== Print area (hidden until print) ====== -->
   <div class="print-area" id="print-area"></div>
 
-  <!-- ====== Register service worker + update prompt ====== -->
+  <!-- ====== Register service worker + manual update check ====== -->
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('sw.js').then(reg => {
 
-          function showUpdateBanner() {
-            if (document.getElementById('update-banner')) return; // already shown
-            const banner = document.createElement('div');
-            banner.id = 'update-banner';
-            banner.innerHTML = `
-              <span>🎉 New version available</span>
-              <button id="btn-backup-before-update"
-                      style="margin-left:12px;padding:4px 12px;background:rgba(255,255,255,0.2);color:#fff;border:1px solid rgba(255,255,255,0.5);border-radius:5px;font-weight:600;cursor:pointer;">
-                Back up first
-              </button>
-              <button id="btn-do-update"
-                      style="margin-left:8px;padding:4px 12px;background:#fff;color:#2563eb;border:none;border-radius:5px;font-weight:600;cursor:pointer;">
-                Update now
-              </button>`;
-            document.body.appendChild(banner);
-            document.getElementById('btn-backup-before-update').addEventListener('click', () => {
-              if (window.exportBackup) window.exportBackup();
-              else alert('Open Settings tab → Export backup to save your data before updating.');
-            });
-            document.getElementById('btn-do-update').addEventListener('click', () => {
-              banner.remove();
-              if (reg.waiting) reg.waiting.postMessage('skipWaiting');
-            });
+          // Show update UI in Settings tab (no automatic popup)
+          function showUpdateReady() {
+            const action = document.getElementById('update-action');
+            const status = document.getElementById('update-status');
+            if (action) action.classList.remove('hidden');
+            if (status) status.textContent = '';
           }
 
           function trackInstalling(sw) {
             sw.addEventListener('statechange', () => {
-              if (sw.state === 'installed' && navigator.serviceWorker.controller) showUpdateBanner();
+              if (sw.state === 'installed' && navigator.serviceWorker.controller) showUpdateReady();
             });
           }
 
-          // Already waiting (e.g. app was open when Netlify deployed)
-          if (reg.waiting) showUpdateBanner();
+          // Already waiting when page opened
+          if (reg.waiting) showUpdateReady();
 
-          reg.addEventListener('updatefound', () => {
-            trackInstalling(reg.installing);
+          reg.addEventListener('updatefound', () => trackInstalling(reg.installing));
+
+          // When new SW takes control, reload
+          navigator.serviceWorker.addEventListener('controllerchange', () => location.reload());
+
+          // Manual check button in Settings
+          window.addEventListener('DOMContentLoaded', () => {}, { once: true });
+          document.addEventListener('click', (e) => {
+            if (e.target.id === 'btn-check-update') {
+              const status = document.getElementById('update-status');
+              status.textContent = 'Checking…';
+              reg.update().then(() => {
+                if (reg.waiting) {
+                  showUpdateReady();
+                } else {
+                  // Wait a moment for updatefound to fire, then confirm up to date
+                  setTimeout(() => {
+                    if (!document.getElementById('update-action')?.classList.contains('hidden') === false) return;
+                    if (!reg.waiting) status.textContent = '✓ You\'re on the latest version';
+                  }, 3000);
+                }
+              }).catch(() => { status.textContent = 'Could not check — make sure you\'re online'; });
+            }
+            if (e.target.id === 'btn-backup-update') {
+              if (window.exportBackup) window.exportBackup();
+            }
+            if (e.target.id === 'btn-apply-update') {
+              if (reg.waiting) reg.waiting.postMessage('skipWaiting');
+            }
           });
 
-          // Force-check for a new SW every time the app opens
-          reg.update().catch(() => {});
-
-          // When the new SW takes control, reload so fresh files are served
-          navigator.serviceWorker.addEventListener('controllerchange', () => location.reload());
         }).catch(err => console.warn('SW registration failed:', err));
       });
     }

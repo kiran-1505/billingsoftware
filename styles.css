@@ -488,29 +488,6 @@ textarea:focus {
   transition: background 0.2s;
 }
 
-/* ── Update banner ───────────────────────────────────── */
-#update-banner {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  background: #1e40af;
-  color: #fff;
-  padding: 10px 20px;
-  font-size: 0.88rem;
-  font-weight: 500;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.25);
-  z-index: 99999;
-  animation: slideDown 0.3s ease;
-}
-@keyframes slideDown {
-  from { transform: translateY(-100%); opacity: 0; }
-  to   { transform: translateY(0);     opacity: 1; }
-}
 
 /* ── Utilities ───────────────────────────────────────── */
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
