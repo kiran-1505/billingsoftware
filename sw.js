@@ -1,5 +1,5 @@
 // sw.js — Service worker for offline PWA support
-const VERSION = 'toolbill-v10';
+const VERSION = 'toolbill-v11';
 const APP_SHELL = [
   './',
   './index.html',
@@ -29,7 +29,8 @@ self.addEventListener('install', (event) => {
     await Promise.allSettled(CDN.map(url =>
       fetch(url, { mode: 'no-cors' }).then(r => cache.put(url, r)).catch(() => null)
     ));
-    self.skipWaiting();
+    // Do NOT call skipWaiting() here — wait for the user to click "Update now"
+    // so the update banner stays visible until they choose to update
   })());
 });
 
