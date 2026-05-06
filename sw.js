@@ -1,5 +1,5 @@
 // sw.js — Service worker for offline PWA support
-const VERSION = 'toolbill-v20';
+const VERSION = 'toolbill-v23';
 const APP_SHELL = [
   './',
   './index.html',
@@ -9,6 +9,17 @@ const APP_SHELL = [
   './manifest.webmanifest',
   './icons/icon-192.png',
   './icons/icon-512.png',
+  './modules/core.js',
+  './modules/auth.js',
+  './modules/billing.js',
+  './modules/products.js',
+  './modules/inventory.js',
+  './modules/labels.js',
+  './modules/reports.js',
+  './modules/scaledown.js',
+  './modules/daily.js',
+  './modules/settings.js',
+  './modules/scanner.js',
 ];
 const CDN = [
   'https://cdn.tailwindcss.com',
