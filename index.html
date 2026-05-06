@@ -106,11 +106,23 @@
 
           <!-- Sticky footer: customer + total + actions -->
           <div class="border-t bg-gray-50 p-3 space-y-2">
+            <!-- Customer type toggle -->
+            <div class="flex text-sm overflow-hidden rounded-lg border border-gray-300">
+              <button id="btn-cust-walkin" class="flex-1 py-2 font-semibold bg-blue-600 text-white transition-colors">Walk-in</button>
+              <button id="btn-cust-gst" class="flex-1 py-2 font-semibold bg-white text-gray-600 hover:bg-gray-50 transition-colors">GST Customer</button>
+            </div>
             <div class="grid grid-cols-2 gap-2">
               <input id="customer-name" type="text" class="p-2 border rounded" placeholder="Customer name (optional)" />
-              <input id="amount-paid" type="number" step="0.01" min="0" class="p-2 border rounded" placeholder="Amount paid" />
+              <input id="customer-phone" type="tel" class="p-2 border rounded" placeholder="Phone (optional)" />
             </div>
-            <input id="bill-notes" type="text" class="w-full p-2 border rounded" placeholder="Notes (optional)" />
+            <!-- Shown only for GST customers -->
+            <div id="gst-customer-row" class="hidden">
+              <input id="customer-gst" type="text" class="w-full p-2 border-2 border-green-500 rounded font-mono bg-green-50 focus:outline-none focus:border-green-700" placeholder="Customer GST number (required)" style="text-transform:uppercase" />
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <input id="amount-paid" type="number" step="0.01" min="0" class="p-2 border rounded" placeholder="Amount paid" />
+              <input id="bill-notes" type="text" class="p-2 border rounded" placeholder="Notes (optional)" />
+            </div>
 
             <div id="active-draft-banner" class="hidden text-xs bg-amber-50 text-amber-800 border border-amber-200 rounded p-2">
               Editing draft <span class="mono" id="active-draft-banner-label"></span>.
@@ -362,6 +374,40 @@
           </table>
         </div>
       </div>
+      <!-- GST Filing Adjustment -->
+      <div class="bg-white rounded-lg shadow mb-4">
+        <div class="p-4 border-b">
+          <h2 class="font-semibold text-gray-800">GST Filing Adjustment</h2>
+          <p class="text-sm text-gray-500 mt-1">Scale down the reported sales total for a month to match what your accountant needs. Bills that have a customer GST number are never touched.</p>
+        </div>
+        <div class="p-4 space-y-4">
+          <div class="flex flex-wrap items-end gap-3">
+            <div>
+              <label class="block text-xs text-gray-600 mb-1">Month</label>
+              <input id="gst-adj-month" type="month" class="p-2 border rounded" />
+            </div>
+            <div>
+              <label class="block text-xs text-gray-600 mb-1">Target amount to report (₹)</label>
+              <input id="gst-adj-target" type="number" step="1" min="0" class="p-2 border rounded w-48" placeholder="e.g. 400000" />
+            </div>
+            <div>
+              <label class="block text-xs text-gray-600 mb-1">Method</label>
+              <div class="flex text-sm overflow-hidden rounded-lg border border-gray-300">
+                <button id="btn-adj-scale" class="px-3 py-2 font-medium bg-blue-600 text-white">Scale totals</button>
+                <button id="btn-adj-items" class="px-3 py-2 font-medium bg-white text-gray-600 hover:bg-gray-50">Remove items</button>
+              </div>
+            </div>
+            <button id="btn-gst-adj-preview" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Preview</button>
+          </div>
+          <p id="adj-method-note" class="text-xs text-gray-500">Scale totals: adjusts the reported bill total proportionally. Line items are untouched. Inventory is never affected.</p>
+          <div id="gst-adj-result" class="hidden"></div>
+          <div id="gst-adj-actions" class="hidden flex flex-wrap gap-2">
+            <button id="btn-gst-adj-apply" class="bg-orange-600 text-white px-4 py-2 rounded hover:bg-orange-700">Apply Adjustment</button>
+            <button id="btn-gst-adj-reset" class="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700">Reset Adjustments for This Month</button>
+          </div>
+        </div>
+      </div>
+
       <div class="bg-white rounded-lg shadow">
         <div class="p-4 border-b"><h2 class="font-semibold text-gray-800">Top-selling items (all time)</h2></div>
         <div class="overflow-x-auto">

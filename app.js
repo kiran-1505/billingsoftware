@@ -46,6 +46,8 @@ const state = {
   currentInvCategory: null,       // selected category name for inventory list view
   sellPickerCategory: null,       // null = showing categories; else showing products in this category
   dailySelectedDate: null,
+  customerType: 'walkin',   // 'walkin' | 'gst'
+  gstAdjMethod: 'scale',    // 'scale' | 'items'
 };
 
 // ========== Utils ==========
@@ -196,6 +198,7 @@ async function init() {
   wireDaily();
   wireLabels();
   wireReports();
+  wireGstAdjust();
   wireSettings();
   wireCategoryManager();
   wireHotkeys();
@@ -761,6 +764,10 @@ function wireBilling() {
     }
   });
 
+  // Customer type toggle
+  $('#btn-cust-walkin').addEventListener('click', () => setCustomerType('walkin'));
+  $('#btn-cust-gst').addEventListener('click', () => setCustomerType('gst'));
+
   $('#btn-clear-cart').addEventListener('click', () => {
     if (!state.cart.length) return;
     if (confirm('Clear cart?')) {
@@ -789,6 +796,15 @@ function wireBilling() {
       dd.classList.add('hidden');
     }
   });
+}
+
+function setCustomerType(type) {
+  state.customerType = type;
+  const isGst = type === 'gst';
+  $('#btn-cust-walkin').className = `flex-1 py-2 font-semibold transition-colors ${!isGst ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`;
+  $('#btn-cust-gst').className   = `flex-1 py-2 font-semibold transition-colors ${isGst  ? 'bg-green-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`;
+  $('#gst-customer-row').classList.toggle('hidden', !isGst);
+  if (isGst) setTimeout(() => $('#customer-gst').focus(), 50);
 }
 
 // Render the right-hand picker: either category tiles or product tiles
@@ -1104,13 +1120,18 @@ function setActiveDraft(id, label) {
 async function saveDraftFromCart() {
   if (!state.cart.length) return toast('Cart is empty', 'error');
   const customerName = $('#customer-name').value.trim();
+  const customerPhone = $('#customer-phone').value.trim();
+  const customerGst = $('#customer-gst').value.trim().toUpperCase();
   const amountPaidRaw = $('#amount-paid').value.trim();
   const amountPaid = amountPaidRaw === '' ? null : parseFloat(amountPaidRaw);
   const notes = $('#bill-notes').value.trim();
   const payload = {
     date: nowISO(),
     items: state.cart.map(l => ({ ...l })),
+    customerType: state.customerType,
     customerName: customerName || null,
+    customerPhone: customerPhone || null,
+    customerGst: customerGst || null,
     amountPaid,
     notes: notes || '',
   };
@@ -1174,7 +1195,10 @@ async function loadDraft(id) {
   if (!d) return;
   if (state.cart.length && !confirm('Cart has items. Replace with this draft?')) return;
   state.cart = (d.items || []).map(l => ({ ...l }));
+  setCustomerType(d.customerType || (d.customerGst ? 'gst' : 'walkin'));
   $('#customer-name').value = d.customerName || '';
+  $('#customer-phone').value = d.customerPhone || '';
+  $('#customer-gst').value = d.customerGst || '';
   $('#amount-paid').value = d.amountPaid != null ? String(d.amountPaid) : '';
   $('#bill-notes').value = d.notes || '';
   setActiveDraft(d.id, `#${d.id}`);
@@ -1203,6 +1227,8 @@ async function saveAndPrintBill() {
   const invoiceNo = `${s.invoicePrefix}${String(s.nextInvoiceNo).padStart(4, '0')}`;
   const total = state.cart.reduce((sum, l) => sum + l.qty * l.price, 0);
   const customerName = $('#customer-name').value.trim();
+  const customerPhone = $('#customer-phone').value.trim();
+  const customerGst = $('#customer-gst').value.trim().toUpperCase();
   const amountPaidRaw = $('#amount-paid').value.trim();
   const amountPaid = amountPaidRaw === '' ? null : parseFloat(amountPaidRaw);
   const notes = $('#bill-notes').value.trim();
@@ -1210,7 +1236,10 @@ async function saveAndPrintBill() {
   const invoice = {
     invoiceNo,
     date: nowISO(),
+    customerType: state.customerType,
     customerName: customerName || null,
+    customerPhone: customerPhone || null,
+    customerGst: customerGst || null,
     items: state.cart.map(l => ({ ...l })),
     subtotal: total,
     total,
@@ -1252,7 +1281,10 @@ async function saveAndPrintBill() {
 
     state.cart = [];
     detachActiveDraft();
+    setCustomerType('walkin');
     $('#customer-name').value = '';
+    $('#customer-phone').value = '';
+    $('#customer-gst').value = '';
     $('#amount-paid').value = '';
     $('#bill-notes').value = '';
     renderCart();
@@ -1290,7 +1322,7 @@ function renderBillToPrintArea(invoice) {
       ${s.gstin ? `<div class="meta">GSTIN: ${escapeHTML(s.gstin)}</div>` : ''}
       <div class="meta" style="border-top:1px dashed #000;border-bottom:1px dashed #000;padding:2px 0;margin:4px 0">
         Bill: <b>${escapeHTML(invoice.invoiceNo)}</b><br/>
-        ${dateStr}${invoice.customerName ? '<br/>Cust: ' + escapeHTML(invoice.customerName) : ''}
+        ${dateStr}${invoice.customerName ? '<br/>Cust: ' + escapeHTML(invoice.customerName) : ''}${invoice.customerPhone ? '<br/>Ph: ' + escapeHTML(invoice.customerPhone) : ''}${invoice.customerGst ? '<br/>GSTIN: ' + escapeHTML(invoice.customerGst) : ''}
       </div>
       <table>
         <thead>
@@ -1749,7 +1781,7 @@ async function renderDaily() {
     if (!byDay[day]) byDay[day] = { date: day, invoices: [], bills: 0, items: 0, total: 0, qty: 0 };
     byDay[day].invoices.push(inv);
     byDay[day].bills++;
-    byDay[day].total += inv.total || 0;
+    byDay[day].total += (inv.adjustedTotal ?? inv.total) || 0;
     byDay[day].items += (inv.items || []).length;
     byDay[day].qty += (inv.items || []).reduce((s, l) => s + (l.qty || 0), 0);
   }
@@ -1767,7 +1799,7 @@ async function renderDaily() {
     if (!q) return true;
     if (d.date.includes(q)) return true;
     // Match if any invoice in this day has the customer name matching
-    return d.invoices.some(inv => (inv.customer || '').toLowerCase().includes(q));
+    return d.invoices.some(inv => (inv.customerName || '').toLowerCase().includes(q));
   });
   const daysBox = $('#daily-days-list');
   if (!filteredDays.length) {
@@ -1817,7 +1849,9 @@ async function renderDaily() {
       lines.push({
         time: inv.date,
         invoiceNo: inv.invoiceNo,
-        customer: inv.customer || '',
+        customer: inv.customerName || '',
+        customerGst: inv.customerGst || '',
+        adjusted: inv.adjustedTotal != null,
         name: l.name,
         qty: l.qty,
         price: l.price,
@@ -1833,12 +1867,18 @@ async function renderDaily() {
   }
   body.innerHTML = lines.map(l => {
     const t = new Date(l.time);
+    const custBadge = l.customerGst
+      ? ` <span class="text-xs bg-green-100 text-green-700 px-1 rounded" title="Customer has GST: ${escapeHTML(l.customerGst)}">GST</span>`
+      : '';
+    const adjBadge = l.adjusted
+      ? ` <span class="text-xs bg-orange-100 text-orange-700 px-1 rounded" title="Bill total was GST-adjusted">adj</span>`
+      : '';
     const customerHtml = l.customer
-      ? `<span class="text-gray-800">${escapeHTML(l.customer)}</span>`
-      : `<span class="text-gray-300">—</span>`;
+      ? `<span class="text-gray-800">${escapeHTML(l.customer)}</span>${custBadge}`
+      : `<span class="text-gray-300">—</span>${custBadge}`;
     return `<tr>
       <td class="text-xs">${t.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</td>
-      <td class="mono text-sm">${escapeHTML(l.invoiceNo || '')}</td>
+      <td class="mono text-sm">${escapeHTML(l.invoiceNo || '')}${adjBadge}</td>
       <td class="text-sm">${customerHtml}</td>
       <td>${escapeHTML(l.name)}</td>
       <td class="text-right">${fmtInt(l.qty)}</td>
@@ -1868,11 +1908,11 @@ async function renderReports() {
   const todayInv = invoices.filter(i => (i.date || '').slice(0, 10) === today);
   const monthInv = invoices.filter(i => (i.date || '').slice(0, 7) === monthPrefix);
 
-  $('#rep-today-sales').textContent = fmtMoney(todayInv.reduce((s, i) => s + (i.total || 0), 0));
+  $('#rep-today-sales').textContent = fmtMoney(todayInv.reduce((s, i) => s + ((i.adjustedTotal ?? i.total) || 0), 0));
   $('#rep-today-bills').textContent = `${todayInv.length} bills`;
-  $('#rep-month-sales').textContent = fmtMoney(monthInv.reduce((s, i) => s + (i.total || 0), 0));
+  $('#rep-month-sales').textContent = fmtMoney(monthInv.reduce((s, i) => s + ((i.adjustedTotal ?? i.total) || 0), 0));
   $('#rep-month-bills').textContent = `${monthInv.length} bills`;
-  $('#rep-alltime-sales').textContent = fmtMoney(invoices.reduce((s, i) => s + (i.total || 0), 0));
+  $('#rep-alltime-sales').textContent = fmtMoney(invoices.reduce((s, i) => s + ((i.adjustedTotal ?? i.total) || 0), 0));
   $('#rep-alltime-bills').textContent = `${invoices.length} bills`;
 
   const from = $('#rep-date-from').value;
@@ -1888,12 +1928,19 @@ async function renderReports() {
     body.innerHTML = filtered.slice(0, 200).map(i => {
       const d = new Date(i.date);
       const itemCount = (i.items || []).reduce((s, l) => s + l.qty, 0);
+      const gstBadge = i.customerGst
+        ? ` <span class="text-xs bg-green-100 text-green-700 px-1 rounded" title="GSTIN: ${escapeHTML(i.customerGst)}">GST</span>`
+        : '';
+      const reportedTotal = i.adjustedTotal ?? i.total;
+      const adjBadge = i.adjustedTotal != null
+        ? ` <span class="text-xs bg-orange-100 text-orange-700 px-1 rounded" title="Original: ${fmtMoney(i.total)}">adj</span>`
+        : '';
       return `<tr>
         <td class="mono">${escapeHTML(i.invoiceNo)}</td>
         <td class="text-xs">${d.toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' })}</td>
-        <td>${escapeHTML(i.customerName || '')}</td>
+        <td>${escapeHTML(i.customerName || '')}${gstBadge}</td>
         <td class="text-right">${itemCount}</td>
-        <td class="text-right font-semibold">${fmtMoney(i.total)}</td>
+        <td class="text-right font-semibold">${fmtMoney(reportedTotal)}${adjBadge}</td>
         <td class="text-right">${i.amountPaid != null ? fmtMoney(i.amountPaid) : '—'}</td>
         <td><button class="text-blue-600 hover:underline text-sm" data-reprint="${i.id}">Reprint</button></td>
       </tr>`;
@@ -1939,11 +1986,12 @@ async function exportBillsCSV() {
   if (from) list = list.filter(i => (i.date || '').slice(0, 10) >= from);
   if (to) list = list.filter(i => (i.date || '').slice(0, 10) <= to);
 
-  const rows = [['Invoice', 'Date', 'Customer', 'ItemCode', 'ItemName', 'Qty', 'Price', 'LineTotal', 'InvoiceTotal', 'AmountPaid', 'Notes']];
+  const rows = [['Invoice', 'Date', 'Customer', 'CustomerPhone', 'CustomerGST', 'ItemCode', 'ItemName', 'Qty', 'Price', 'LineTotal', 'InvoiceTotal', 'AdjustedTotal', 'AmountPaid', 'Notes']];
   for (const inv of list) {
     const date = (inv.date || '').slice(0, 10);
+    const reportedTotal = inv.adjustedTotal ?? inv.total;
     for (const l of inv.items || []) {
-      rows.push([inv.invoiceNo, date, inv.customerName || '', l.shortCode || '', l.name, l.qty, l.price, l.qty * l.price, inv.total, inv.amountPaid ?? '', inv.notes || '']);
+      rows.push([inv.invoiceNo, date, inv.customerName || '', inv.customerPhone || '', inv.customerGst || '', l.shortCode || '', l.name, l.qty, l.price, l.qty * l.price, inv.total, reportedTotal, inv.amountPaid ?? '', inv.notes || '']);
     }
   }
   const csv = rows.map(r => r.map(c => {
@@ -1960,6 +2008,285 @@ function downloadBlob(blob, name) {
   a.href = url; a.download = name;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// ========== GST FILING ADJUSTMENT ==========
+function wireGstAdjust() {
+  const monthEl = $('#gst-adj-month');
+  if (monthEl) monthEl.value = new Date().toISOString().slice(0, 7);
+  $('#btn-gst-adj-preview').addEventListener('click', previewGstAdjust);
+  $('#btn-gst-adj-apply').addEventListener('click', applyGstAdjust);
+  $('#btn-gst-adj-reset').addEventListener('click', resetGstAdjust);
+  $('#btn-adj-scale').addEventListener('click', () => setAdjMethod('scale'));
+  $('#btn-adj-items').addEventListener('click', () => setAdjMethod('items'));
+}
+
+function setAdjMethod(method) {
+  state.gstAdjMethod = method;
+  const isItems = method === 'items';
+  $('#btn-adj-scale').className = `px-3 py-2 font-medium transition-colors ${!isItems ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`;
+  $('#btn-adj-items').className = `px-3 py-2 font-medium transition-colors ${isItems  ? 'bg-orange-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`;
+  const note = $('#adj-method-note');
+  if (note) note.textContent = isItems
+    ? 'Remove items: deletes the cheapest line items from adjustable bills until the total is reduced. Stock counts are never changed — inventory stays accurate.'
+    : 'Scale totals: adjusts the reported bill total proportionally. Line items are untouched. Inventory is never affected.';
+  // Clear any previous preview when method changes
+  $('#gst-adj-result').classList.add('hidden');
+  $('#gst-adj-actions').classList.add('hidden');
+}
+
+async function previewGstAdjust() {
+  const month = $('#gst-adj-month').value;
+  const targetStr = $('#gst-adj-target').value.trim();
+  const target = parseFloat(targetStr);
+
+  if (!month) return toast('Select a month first', 'error');
+
+  const invoices = await db.all('invoices');
+  const monthInv = invoices.filter(i => (i.date || '').slice(0, 7) === month);
+
+  const protectedInv = monthInv.filter(i => i.customerGst);
+  const adjustableInv = monthInv.filter(i => !i.customerGst);
+
+  const protectedTotal = protectedInv.reduce((s, i) => s + (i.total || 0), 0);
+  const adjustableTotal = adjustableInv.reduce((s, i) => s + (i.total || 0), 0);
+  const currentReported = protectedTotal + adjustableInv.reduce((s, i) => s + ((i.adjustedTotal ?? i.total) || 0), 0);
+
+  const resultDiv = $('#gst-adj-result');
+  const actionsDiv = $('#gst-adj-actions');
+  resultDiv.classList.remove('hidden');
+
+  let html = `<div class="grid md:grid-cols-3 gap-3 mb-3">
+    <div class="bg-gray-50 rounded p-3">
+      <div class="text-xs text-gray-500 uppercase tracking-wide">Currently reported (${month})</div>
+      <div class="text-xl font-bold mt-1">${fmtMoney(currentReported)}</div>
+      <div class="text-xs text-gray-400 mt-1">${monthInv.length} bills total</div>
+    </div>
+    <div class="bg-green-50 rounded p-3">
+      <div class="text-xs text-gray-500 uppercase tracking-wide">Protected — customer has GST</div>
+      <div class="text-xl font-bold mt-1 text-green-700">${fmtMoney(protectedTotal)}</div>
+      <div class="text-xs text-gray-400 mt-1">${protectedInv.length} bills — never touched</div>
+    </div>
+    <div class="bg-blue-50 rounded p-3">
+      <div class="text-xs text-gray-500 uppercase tracking-wide">Adjustable — no customer GST</div>
+      <div class="text-xl font-bold mt-1 text-blue-700">${fmtMoney(adjustableTotal)}</div>
+      <div class="text-xs text-gray-400 mt-1">${adjustableInv.length} bills</div>
+    </div>
+  </div>`;
+
+  if (isNaN(target)) {
+    resultDiv.innerHTML = html + `<p class="text-sm text-gray-500">Enter a target amount above to see the adjustment preview.</p>`;
+    actionsDiv.classList.add('hidden');
+    return;
+  }
+
+  if (target >= currentReported) {
+    resultDiv.innerHTML = html + `<div class="p-3 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800">Target ${fmtMoney(target)} is ≥ current reported total. No adjustment needed.</div>`;
+    actionsDiv.classList.add('hidden');
+    return;
+  }
+
+  if (target < protectedTotal) {
+    resultDiv.innerHTML = html + `<div class="p-3 bg-red-50 border border-red-200 rounded text-sm text-red-800">Target ${fmtMoney(target)} is less than the protected bills total (${fmtMoney(protectedTotal)}). Cannot reduce below this — those customers file their own GST.</div>`;
+    actionsDiv.classList.add('hidden');
+    return;
+  }
+
+  if (adjustableInv.length === 0) {
+    resultDiv.innerHTML = html + `<div class="p-3 bg-red-50 border border-red-200 rounded text-sm text-red-800">Every bill this month has a customer GST number. No bills can be adjusted.</div>`;
+    actionsDiv.classList.add('hidden');
+    return;
+  }
+
+  const adjustableTarget = target - protectedTotal;
+  const reduction = adjustableTotal - adjustableTarget;
+  const alreadyAdjusted = adjustableInv.filter(i => i.adjustedTotal != null || (i._gstRemovedItems && i._gstRemovedItems.length > 0)).length;
+  const overwriteNote = alreadyAdjusted > 0 ? `<div class="text-xs text-orange-600">${alreadyAdjusted} bill(s) already adjusted — will be overwritten.</div>` : '';
+
+  if (state.gstAdjMethod === 'items') {
+    // Simulate item removal to show how many items would be removed
+    const allItems = [];
+    for (const inv of adjustableInv) {
+      for (const item of inv.items || []) {
+        allItems.push({ inv, item, lineTotal: (item.price || 0) * (item.qty || 0) });
+      }
+    }
+    allItems.sort((a, b) => a.lineTotal - b.lineTotal);
+    const remaining = new Map(adjustableInv.map(inv => [inv.id, [...(inv.items || [])]]));
+    let simReduced = 0, simCount = 0;
+    for (const { inv, item } of allItems) {
+      if (simReduced >= reduction) break;
+      if ((remaining.get(inv.id) || []).length <= 1) continue;
+      remaining.get(inv.id).splice(remaining.get(inv.id).findIndex(x => x === item), 1);
+      simReduced += (item.price || 0) * (item.qty || 0);
+      simCount++;
+    }
+    const achievedTotal = protectedTotal + (adjustableTotal - simReduced);
+    html += `<div class="p-3 bg-orange-50 border border-orange-200 rounded text-sm space-y-1">
+      <div class="font-semibold text-orange-800">Preview — Remove items</div>
+      <div class="text-orange-700">
+        <strong>${simCount}</strong> item(s) will be deleted from adjustable bills (cheapest first).
+        Reduction: <strong>${fmtMoney(simReduced)}</strong>.
+      </div>
+      <div class="font-semibold text-orange-800">Achieved reported total: ~${fmtMoney(achievedTotal)}</div>
+      <div class="text-xs text-gray-500">Stock counts are NOT changed. Removed items can be restored with "Reset Adjustments".</div>
+      ${overwriteNote}
+    </div>`;
+  } else {
+    const scale = adjustableTarget / adjustableTotal;
+    html += `<div class="p-3 bg-orange-50 border border-orange-200 rounded text-sm space-y-1">
+      <div class="font-semibold text-orange-800">Preview — Scale totals</div>
+      <div class="text-orange-700">
+        Adjustable bills scaled: <strong>${fmtMoney(adjustableTotal)}</strong> → <strong>${fmtMoney(adjustableTarget)}</strong>
+        &nbsp;(reduction <strong>${fmtMoney(reduction)}</strong>, scale ${(scale * 100).toFixed(1)}%)
+      </div>
+      <div class="font-semibold text-orange-800">Final reported total: ${fmtMoney(protectedTotal + adjustableTarget)}</div>
+      <div class="text-xs text-gray-500">Line items and stock are not changed — only the reported invoice total is adjusted.</div>
+      ${overwriteNote}
+    </div>`;
+  }
+
+  resultDiv.innerHTML = html;
+  actionsDiv.classList.remove('hidden');
+}
+
+async function applyGstAdjust() {
+  const month = $('#gst-adj-month').value;
+  const target = parseFloat($('#gst-adj-target').value.trim());
+
+  if (!month || isNaN(target)) return toast('Enter month and target amount', 'error');
+
+  const invoices = await db.all('invoices');
+  const monthInv = invoices.filter(i => (i.date || '').slice(0, 7) === month);
+  const protectedInv = monthInv.filter(i => i.customerGst);
+  const adjustableInv = monthInv.filter(i => !i.customerGst);
+
+  const protectedTotal = protectedInv.reduce((s, i) => s + (i.total || 0), 0);
+  const adjustableTotal = adjustableInv.reduce((s, i) => s + (i.total || 0), 0);
+
+  if (adjustableInv.length === 0) return toast('No adjustable bills this month', 'error');
+  if (target < protectedTotal) return toast(`Target is less than protected total (${fmtMoney(protectedTotal)})`, 'error');
+  if (adjustableTotal === 0) return toast('Adjustable bills have zero total', 'error');
+
+  if (state.gstAdjMethod === 'items') {
+    if (!confirm(`Apply GST adjustment for ${month} by removing items?\n\nCheapest items will be deleted from adjustable bills until the total reaches the target. Stock counts are NOT changed — inventory stays accurate.`)) return;
+    await applyGstAdjustRemoveItems(adjustableInv, target - protectedTotal);
+  } else {
+    if (!confirm(`Apply GST adjustment for ${month} by scaling totals?\n\nReported totals will be proportionally scaled down. Line items and stock are not changed.`)) return;
+    await applyGstAdjustScaleTotals(adjustableInv, target - protectedTotal, adjustableTotal);
+  }
+
+  toast(`Adjustment applied to ${adjustableInv.length} bills`, 'success');
+  await previewGstAdjust();
+  renderReports();
+}
+
+async function applyGstAdjustScaleTotals(adjustableInv, adjustableTarget, adjustableTotal) {
+  const scale = adjustableTarget / adjustableTotal;
+  let computedTotals = adjustableInv.map(i => Math.round(i.total * scale * 100) / 100);
+
+  // Fix floating-point rounding remainder into the largest bill
+  const computedSum = computedTotals.reduce((s, v) => s + v, 0);
+  const remainder = Math.round((adjustableTarget - computedSum) * 100) / 100;
+  if (remainder !== 0) {
+    let maxIdx = 0;
+    for (let i = 1; i < computedTotals.length; i++) {
+      if (computedTotals[i] > computedTotals[maxIdx]) maxIdx = i;
+    }
+    computedTotals[maxIdx] = Math.round((computedTotals[maxIdx] + remainder) * 100) / 100;
+  }
+  for (let i = 0; i < adjustableInv.length; i++) {
+    // Clear any previously removed items before applying scale
+    const updated = { ...adjustableInv[i], adjustedTotal: computedTotals[i] };
+    await db.put('invoices', updated);
+  }
+}
+
+async function applyGstAdjustRemoveItems(adjustableInv, adjustableTarget) {
+  const adjustableTotal = adjustableInv.reduce((s, i) => s + (i.total || 0), 0);
+  const reductionNeeded = adjustableTotal - adjustableTarget;
+
+  // Flatten all line items tagged with their invoice, sort cheapest first
+  const allItems = [];
+  for (const inv of adjustableInv) {
+    for (const item of inv.items || []) {
+      allItems.push({ inv, item, lineTotal: (item.price || 0) * (item.qty || 0) });
+    }
+  }
+  allItems.sort((a, b) => a.lineTotal - b.lineTotal);
+
+  // Track remaining and removed items per invoice
+  const remaining = new Map(adjustableInv.map(inv => [inv.id, [...(inv.items || [])]]));
+  const removed   = new Map(adjustableInv.map(inv => [inv.id, []]));
+
+  let reducedSoFar = 0;
+  for (const { inv, item } of allItems) {
+    if (reducedSoFar >= reductionNeeded) break;
+    const billRemaining = remaining.get(inv.id);
+    if (billRemaining.length <= 1) continue; // always keep at least 1 item per bill
+    const idx = billRemaining.findIndex(x => x === item);
+    if (idx === -1) continue;
+    billRemaining.splice(idx, 1);
+    removed.get(inv.id).push(item);
+    reducedSoFar += (item.price || 0) * (item.qty || 0);
+  }
+
+  // Save updated invoices — stock movements are NOT touched
+  for (const inv of adjustableInv) {
+    const updatedItems = remaining.get(inv.id);
+    const removedItems = removed.get(inv.id);
+    const newTotal = updatedItems.reduce((s, l) => s + (l.price || 0) * (l.qty || 0), 0);
+    const updated = {
+      ...inv,
+      items: updatedItems,
+      subtotal: newTotal,
+      total: newTotal,
+      _gstRemovedItems: [...(inv._gstRemovedItems || []), ...removedItems],
+    };
+    delete updated.adjustedTotal; // remove scale-method field if present
+    await db.put('invoices', updated);
+  }
+}
+
+async function resetGstAdjust() {
+  const month = $('#gst-adj-month').value;
+  if (!month) return toast('Select a month first', 'error');
+  if (!confirm(`Reset all GST adjustments for ${month}?\n\nBills will revert to their original totals and any removed items will be restored.`)) return;
+
+  const invoices = await db.all('invoices');
+  const monthInv = invoices.filter(i => (i.date || '').slice(0, 7) === month);
+  let resetCount = 0;
+
+  for (const inv of monthInv) {
+    let changed = false;
+    const updated = { ...inv };
+
+    // Restore "scale totals" adjustment
+    if (updated.adjustedTotal != null) {
+      delete updated.adjustedTotal;
+      changed = true;
+    }
+
+    // Restore removed items from "remove items" adjustment
+    if (updated._gstRemovedItems && updated._gstRemovedItems.length > 0) {
+      const restoredItems = [...(updated.items || []), ...updated._gstRemovedItems];
+      const newTotal = restoredItems.reduce((s, l) => s + (l.price || 0) * (l.qty || 0), 0);
+      updated.items = restoredItems;
+      updated.subtotal = newTotal;
+      updated.total = newTotal;
+      delete updated._gstRemovedItems;
+      changed = true;
+    }
+
+    if (changed) {
+      await db.put('invoices', updated);
+      resetCount++;
+    }
+  }
+
+  toast(`Reset adjustments on ${resetCount} bill(s)`, 'success');
+  await previewGstAdjust();
+  renderReports();
 }
 
 // ========== SETTINGS ==========
