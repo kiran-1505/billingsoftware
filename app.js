@@ -22,8 +22,10 @@ const DEFAULT_SETTINGS = {
   invoicePrefix: 'INV-',
   nextInvoiceNo: 1,
   footer: 'Thank you! Visit again.',
-  adminUser: 'admin',
-  adminPass: 'admin123',
+  user1Name: 'accounts',
+  user1Pass: '1234',
+  user2Name: 'admin',
+  user2Pass: 'admin123',
 };
 
 // ========== State ==========
@@ -36,7 +38,7 @@ const state = {
   cart: [],                // [{productId, shortCode, name, price, qty, unit}]
   searchResults: [],
   searchActive: -1,
-  adminLoggedIn: false,
+  currentUser: null,   // null | 'user1' | 'user2'
   selectedLabels: new Set(),
   showLowOnly: false,
   bulkPreview: null,
@@ -47,7 +49,7 @@ const state = {
   sellPickerCategory: null,       // null = showing categories; else showing products in this category
   dailySelectedDate: null,
   customerType: 'walkin',   // 'walkin' | 'gst'
-  gstAdjMethod: 'scale',    // 'scale' | 'items'
+  repCustFilter: 'all',     // 'all' | 'gst' | 'walkin'
 };
 
 // ========== Utils ==========
@@ -161,6 +163,29 @@ function debounce(fn, ms = 120) {
   return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
 }
 
+// Compress an image File to a base64 JPEG at max 480px, quality 0.75
+function compressImage(file) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX = 480;
+        const ratio = Math.min(MAX / img.width, MAX / img.height, 1);
+        const canvas = document.createElement('canvas');
+        canvas.width  = Math.round(img.width  * ratio);
+        canvas.height = Math.round(img.height * ratio);
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL('image/jpeg', 0.75));
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+let _productModalImage = null; // tracks current image while product modal is open
+
 // ========== Initialization ==========
 async function init() {
   // Load settings
@@ -186,6 +211,9 @@ async function init() {
   // Load drafts
   await refreshDrafts();
 
+  // Build customer autocomplete list
+  await buildCustomerList();
+
   // Populate category <select> elements
   populateCategorySelects();
 
@@ -198,18 +226,17 @@ async function init() {
   wireDaily();
   wireLabels();
   wireReports();
-  wireGstAdjust();
+  wireVoidBills();
   wireSettings();
   wireCategoryManager();
   wireHotkeys();
   wireModalClose();
   wireDateInputs();
   wireGlobalScanner();
-  await wireAdmin();
-  applyAdminState();
+  wireAdmin();
+  applyUserState();
   wireCameraScanner();
 
-  // Default tab
   switchTab('billing');
 }
 
@@ -286,13 +313,7 @@ function switchTab(name) {
 }
 
 function wireTabs() {
-  $$('.tab-btn').forEach(b => b.addEventListener('click', () => {
-    if (b.classList.contains('admin-tab') && !state.adminLoggedIn) {
-      openAdminModal();
-      return;
-    }
-    switchTab(b.dataset.tab);
-  }));
+  $$('.tab-btn').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.tab)));
   $('#btn-home').addEventListener('click', () => {
     switchTab('billing');
     $('#bill-search').focus();
@@ -419,6 +440,7 @@ function renderProductsCategoryView() {
   }
   grid.innerHTML = cats.map(c => `
     <button class="cat-card text-left" data-cat="${escapeHTML(c.name)}">
+      ${c.image ? `<img src="${escapeHTML(c.image)}" class="w-full h-20 object-cover rounded mb-2 -mx-0" style="margin:-0" />` : ''}
       <div class="font-semibold text-gray-800 truncate">${escapeHTML(c.name)}</div>
       <div class="text-xs text-gray-500 mt-1">${fmtInt(c.count)} ${c.count === 1 ? 'item' : 'items'}</div>
     </button>
@@ -453,7 +475,12 @@ function renderProductsList() {
     body.innerHTML = list.map(p => `
       <tr>
         <td class="mono">${escapeHTML(p.shortCode)}</td>
-        <td>${escapeHTML(p.name)}</td>
+        <td>
+          <div class="flex items-center gap-2">
+            ${p.image ? `<img src="${escapeHTML(p.image)}" class="w-8 h-8 object-cover rounded flex-shrink-0" />` : ''}
+            <span>${escapeHTML(p.name)}</span>
+          </div>
+        </td>
         <td>${escapeHTML(canonicalCategory(p.category))}</td>
         <td>${escapeHTML(p.unit || 'piece')}</td>
         <td class="text-right">${fmtMoney(p.sellingPrice)}</td>
@@ -488,9 +515,44 @@ function openProductModal(id) {
   $('#pm-hsn').value = editing?.hsn || '';
   $('#pm-shortcode').value = editing?.shortCode || '';
   $('#pm-save').dataset.editingId = editing?.id || '';
+
+  // Image preview
+  _productModalImage = editing?.image || null;
+  setProductModalImagePreview(_productModalImage);
+
+  // Wire image upload (replace listener each open to avoid duplicates)
+  const imgInput = $('#pm-img-input');
+  const newInput = imgInput.cloneNode(true);
+  imgInput.replaceWith(newInput);
+  newInput.addEventListener('change', async () => {
+    if (!newInput.files[0]) return;
+    _productModalImage = await compressImage(newInput.files[0]);
+    setProductModalImagePreview(_productModalImage);
+  });
+  $('#pm-img-clear').addEventListener('click', () => {
+    _productModalImage = null;
+    setProductModalImagePreview(null);
+  }, { once: true });
+
   if (!editing) updatePendingShortCode();
   openModal('modal-product');
   setTimeout(() => $('#pm-name').focus(), 50);
+}
+
+function setProductModalImagePreview(src) {
+  const preview = $('#pm-img-preview');
+  const placeholder = $('#pm-img-placeholder');
+  const clearBtn = $('#pm-img-clear');
+  if (src) {
+    preview.src = src;
+    preview.style.display = '';
+    placeholder.style.display = 'none';
+    clearBtn.style.display = '';
+  } else {
+    preview.style.display = 'none';
+    placeholder.style.display = '';
+    clearBtn.style.display = 'none';
+  }
 }
 
 async function updatePendingShortCode() {
@@ -523,6 +585,7 @@ async function saveProductFromModal() {
       p.sellingPrice = price;
       p.reorderLevel = reorder;
       p.hsn = hsn;
+      p.image = _productModalImage;
       p.updatedAt = nowISO();
       if (stock !== p.stockQty) {
         const diff = stock - p.stockQty;
@@ -539,6 +602,7 @@ async function saveProductFromModal() {
       const prod = {
         shortCode, name, category, unit,
         sellingPrice: price, stockQty: stock, reorderLevel: reorder, hsn,
+        image: _productModalImage,
         gstRate: 18,
         createdAt: nowISO(), updatedAt: nowISO(),
       };
@@ -667,13 +731,19 @@ function renderCategoryManager() {
     const n = counts[c.name] || 0;
     const canDelete = n === 0;
     return `
-      <div class="flex items-center justify-between gap-2 p-2 border rounded">
+      <div class="flex items-center gap-2 p-2 border rounded">
+        <label class="cursor-pointer flex-shrink-0" title="Click to upload image">
+          ${c.image
+            ? `<img src="${escapeHTML(c.image)}" class="w-10 h-10 object-cover rounded border border-gray-200" />`
+            : `<div class="w-10 h-10 rounded border-2 border-dashed border-gray-300 flex items-center justify-center text-gray-400 text-xs text-center leading-tight">Add<br/>img</div>`}
+          <input type="file" accept="image/*" class="hidden" data-cat-img="${c.id}" />
+        </label>
         <div class="flex-1">
           <input type="text" class="w-full p-1 border rounded" data-cat-edit="${c.id}" value="${escapeHTML(c.name)}" />
         </div>
-        <span class="text-xs text-gray-500 w-20 text-right">${fmtInt(n)} item${n === 1 ? '' : 's'}</span>
-        <button class="text-blue-600 text-sm hover:underline" data-cat-save="${c.id}">Save</button>
-        <button class="cart-rm-btn ${canDelete ? '' : 'opacity-40 cursor-not-allowed'}"
+        <span class="text-xs text-gray-500 w-16 text-right flex-shrink-0">${fmtInt(n)} item${n === 1 ? '' : 's'}</span>
+        <button class="text-blue-600 text-sm hover:underline flex-shrink-0" data-cat-save="${c.id}">Save</button>
+        <button class="cart-rm-btn flex-shrink-0 ${canDelete ? '' : 'opacity-40 cursor-not-allowed'}"
                 data-cat-del="${c.id}" ${canDelete ? '' : 'disabled'}
                 title="${canDelete ? 'Delete' : 'Has products — reassign them first'}">
           <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
@@ -722,6 +792,22 @@ function renderCategoryManager() {
     renderCategoryManager();
     toast('Deleted', 'success');
   }));
+  box.querySelectorAll('[data-cat-img]').forEach(input => {
+    input.addEventListener('change', async () => {
+      if (!input.files[0]) return;
+      const id = +input.dataset.catImg;
+      const cat = state.categories.find(x => x.id === id);
+      if (!cat) return;
+      cat.image = await compressImage(input.files[0]);
+      await db.put('categories', cat);
+      await refreshCategories();
+      renderCategoryManager();
+      renderProductsCategoryView();
+      renderInventoryCategoryView();
+      renderSellPane();
+      toast('Image updated', 'success');
+    });
+  });
 }
 
 async function addCategoryFromInput() {
@@ -778,6 +864,7 @@ function wireBilling() {
   });
   $('#btn-save-print').addEventListener('click', saveAndPrintBill);
   $('#btn-save-draft').addEventListener('click', saveDraftFromCart);
+  wireCustomerAutocomplete();
   $('#btn-active-draft-detach').addEventListener('click', () => {
     detachActiveDraft();
     toast('Detached — changes will become a new draft or bill', '');
@@ -807,6 +894,136 @@ function setCustomerType(type) {
   if (isGst) setTimeout(() => $('#customer-gst').focus(), 50);
 }
 
+// ========== CUSTOMER AUTOCOMPLETE ==========
+let _customerList = []; // deduplicated past customers [{name, phone, gst, type}]
+
+async function buildCustomerList() {
+  // Customers store is the primary source; invoices fill in historical data
+  const [customers, invoices] = await Promise.all([db.all('customers'), db.all('invoices')]);
+  const seen = new Map();
+
+  // Dedicated customer records take priority
+  for (const c of customers) {
+    const key = (c.phone || c.gst || c.name || '').toLowerCase();
+    if (key) seen.set(key, { name: c.name || '', phone: c.phone || '', gst: c.gst || '', type: c.type || 'walkin' });
+  }
+
+  // Back-fill from invoices (history before the customers store existed)
+  for (const inv of [...invoices].sort((a, b) => (b.date || '').localeCompare(a.date || ''))) {
+    const name  = (inv.customerName  || '').trim();
+    const phone = (inv.customerPhone || '').trim();
+    const gst   = (inv.customerGst   || '').trim().toUpperCase();
+    if (!name && !phone && !gst) continue;
+    const key = (phone || gst || name).toLowerCase();
+    if (!seen.has(key)) seen.set(key, { name, phone, gst, type: inv.customerType || (gst ? 'gst' : 'walkin') });
+  }
+
+  _customerList = Array.from(seen.values());
+}
+
+async function upsertCustomer(name, phone, gst, type) {
+  if (!name && !phone && !gst) return;
+  const customers = await db.all('customers');
+  // Match by phone first, then GST, then name
+  const existing = customers.find(c =>
+    (phone && c.phone === phone) ||
+    (gst   && c.gst   === gst)   ||
+    (!phone && !gst && c.name === name)
+  );
+  const now = nowISO();
+  if (existing) {
+    if (name)  existing.name  = name;
+    if (phone) existing.phone = phone;
+    if (gst)   existing.gst   = gst;
+    existing.type = type || existing.type;
+    existing.updatedAt = now;
+    await db.put('customers', existing);
+  } else {
+    await db.add('customers', { name, phone, gst, type: type || 'walkin', createdAt: now, updatedAt: now });
+  }
+}
+
+function wireCustomerAutocomplete() {
+  // Create a single shared dropdown positioned with fixed coords
+  const dd = document.createElement('div');
+  dd.id = 'customer-dropdown';
+  dd.className = 'fixed z-50 bg-white border border-gray-200 rounded-lg shadow-xl overflow-y-auto hidden';
+  dd.style.maxHeight = '220px';
+  document.body.appendChild(dd);
+
+  const fieldIds = ['customer-name', 'customer-phone', 'customer-gst'];
+
+  fieldIds.forEach(fieldId => {
+    const el = $('#' + fieldId);
+    if (!el) return;
+    el.addEventListener('input', () => showCustomerSuggestions(el, dd, fieldId));
+    el.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') dd.classList.add('hidden');
+      if (e.key === 'ArrowDown') { e.preventDefault(); dd.querySelector('.cust-s')?.focus(); }
+    });
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#customer-dropdown') && !fieldIds.includes(e.target.id)) {
+      dd.classList.add('hidden');
+    }
+  });
+}
+
+function showCustomerSuggestions(inputEl, dd, fieldId) {
+  const q = inputEl.value.trim().toLowerCase();
+  if (!q || q.length < 1) { dd.classList.add('hidden'); return; }
+
+  const matches = _customerList.filter(c => {
+    if (fieldId === 'customer-name')  return (c.name  || '').toLowerCase().includes(q);
+    if (fieldId === 'customer-phone') return (c.phone || '').toLowerCase().includes(q);
+    if (fieldId === 'customer-gst')   return (c.gst   || '').toLowerCase().includes(q);
+    return false;
+  }).slice(0, 8);
+
+  if (!matches.length) { dd.classList.add('hidden'); return; }
+
+  // Position below the input
+  const rect = inputEl.getBoundingClientRect();
+  dd.style.top   = (rect.bottom + window.scrollY + 4) + 'px';
+  dd.style.left  = rect.left + 'px';
+  dd.style.width = Math.max(rect.width, 240) + 'px';
+
+  dd.innerHTML = matches.map((c, i) => `
+    <div class="cust-s flex items-center gap-2 px-3 py-2 hover:bg-blue-50 cursor-pointer outline-none" tabindex="0" data-i="${i}">
+      <div class="min-w-0 flex-1">
+        <div class="font-medium text-sm text-gray-800 truncate">${escapeHTML(c.name || '—')}</div>
+        <div class="text-xs text-gray-400 truncate">${c.phone ? escapeHTML(c.phone) : ''}${c.gst ? (c.phone ? ' · ' : '') + escapeHTML(c.gst) : ''}</div>
+      </div>
+      ${c.gst ? `<span class="text-xs bg-green-100 text-green-700 px-1 rounded flex-shrink-0">GST</span>` : ''}
+    </div>
+  `).join('');
+
+  dd.classList.remove('hidden');
+  dd.querySelectorAll('.cust-s').forEach((el, i) => {
+    const pick = () => { fillCustomer(matches[i]); dd.classList.add('hidden'); };
+    el.addEventListener('click', pick);
+    el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') pick();
+      if (e.key === 'Escape') dd.classList.add('hidden');
+      if (e.key === 'ArrowDown') { e.preventDefault(); el.nextElementSibling?.focus(); }
+      if (e.key === 'ArrowUp')   { e.preventDefault(); el.previousElementSibling?.focus() || inputEl.focus(); }
+    });
+  });
+}
+
+function fillCustomer(c) {
+  $('#customer-name').value  = c.name  || '';
+  $('#customer-phone').value = c.phone || '';
+  if (c.gst) {
+    setCustomerType('gst');
+    $('#customer-gst').value = c.gst;
+  } else {
+    setCustomerType(c.type || 'walkin');
+    $('#customer-gst').value = '';
+  }
+}
+
 // Render the right-hand picker: either category tiles or product tiles
 function renderSellPane() {
   const title = $('#sell-pane-title');
@@ -829,6 +1046,7 @@ function renderSellPane() {
     }
     body.innerHTML = `<div class="sell-tiles">` + cats.map(c => `
       <button class="sell-cat-tile" data-sell-cat="${escapeHTML(c.name)}">
+        ${c.image ? `<img src="${escapeHTML(c.image)}" class="w-full h-16 object-cover rounded mb-1" />` : ''}
         <div class="sell-cat-tile-name">${escapeHTML(c.name)}</div>
         <div class="sell-cat-tile-meta">${fmtInt(c.count)} ${c.count === 1 ? 'item' : 'items'}</div>
       </button>
@@ -858,6 +1076,7 @@ function renderSellPane() {
       return `
         <button class="sell-prod-tile ${outOfStock ? 'oos' : ''}" data-sell-prod="${p.id}">
           ${inCart > 0 ? `<span class="sell-prod-badge">${inCart}</span>` : ''}
+          ${p.image ? `<img src="${escapeHTML(p.image)}" class="w-full h-16 object-cover rounded mb-1" />` : ''}
           <div class="sell-prod-name">${escapeHTML(p.name)}</div>
           <div class="sell-prod-code mono">${escapeHTML(p.shortCode)}</div>
           <div class="sell-prod-footer">
@@ -1290,6 +1509,10 @@ async function saveAndPrintBill() {
     renderCart();
     renderDrafts();
     renderSellPane();
+    if (customerName || customerPhone || customerGst) {
+      await upsertCustomer(customerName, customerPhone, customerGst, state.customerType);
+    }
+    buildCustomerList();
     toast('Bill ' + invoiceNo + ' saved', 'success');
     $('#bill-search').focus();
   } catch (e) {
@@ -1717,6 +1940,7 @@ function renderInventoryCategoryView() {
   }
   grid.innerHTML = cats.map(c => `
     <button class="cat-card text-left" data-cat="${escapeHTML(c.name)}">
+      ${c.image ? `<img src="${escapeHTML(c.image)}" class="w-full h-20 object-cover rounded mb-2" />` : ''}
       <div class="font-semibold text-gray-800 truncate">${escapeHTML(c.name)}</div>
       <div class="text-xs text-gray-500 mt-1">${fmtInt(c.items || 0)} items · ${fmtInt(c.stock || 0)} units</div>
       ${c.low ? `<div class="text-xs stock-low mt-1">${c.low} low</div>` : ''}
@@ -1889,6 +2113,17 @@ async function renderDaily() {
 }
 
 // ========== REPORTS ==========
+// User2 sees actual (pre-scale) totals; User1 sees filed (post-scale) totals
+function getActualTotal(inv) {
+  if (inv._gstOriginalItems) {
+    return inv._gstOriginalItems.reduce((s, l) => s + (l.price || 0) * (l.qty || 0), 0);
+  }
+  return inv.total || 0;
+}
+function getDisplayTotal(inv) {
+  return state.currentUser === 'user2' ? getActualTotal(inv) : (inv.total || 0);
+}
+
 function wireReports() {
   $('#btn-rep-filter').addEventListener('click', renderReports);
   $('#btn-rep-today').addEventListener('click', () => {
@@ -1897,6 +2132,13 @@ function wireReports() {
     renderReports();
   });
   $('#btn-rep-export').addEventListener('click', exportBillsCSV);
+  $$('.rep-cust-filter-btn').forEach(btn => btn.addEventListener('click', () => {
+    state.repCustFilter = btn.dataset.filter;
+    $$('.rep-cust-filter-btn').forEach(b => {
+      b.className = `rep-cust-filter-btn px-3 py-1.5 font-medium ${b.dataset.filter === state.repCustFilter ? 'bg-gray-800 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`;
+    });
+    renderReports();
+  }));
 }
 
 async function renderReports() {
@@ -1907,19 +2149,27 @@ async function renderReports() {
 
   const todayInv = invoices.filter(i => (i.date || '').slice(0, 10) === today);
   const monthInv = invoices.filter(i => (i.date || '').slice(0, 7) === monthPrefix);
+  const monthGst    = monthInv.filter(i => i.customerGst);
+  const monthWalkin = monthInv.filter(i => !i.customerGst);
 
-  $('#rep-today-sales').textContent = fmtMoney(todayInv.reduce((s, i) => s + ((i.adjustedTotal ?? i.total) || 0), 0));
+  $('#rep-today-sales').textContent = fmtMoney(todayInv.reduce((s, i) => s + getDisplayTotal(i), 0));
   $('#rep-today-bills').textContent = `${todayInv.length} bills`;
-  $('#rep-month-sales').textContent = fmtMoney(monthInv.reduce((s, i) => s + ((i.adjustedTotal ?? i.total) || 0), 0));
+  $('#rep-month-sales').textContent = fmtMoney(monthInv.reduce((s, i) => s + getDisplayTotal(i), 0));
   $('#rep-month-bills').textContent = `${monthInv.length} bills`;
-  $('#rep-alltime-sales').textContent = fmtMoney(invoices.reduce((s, i) => s + ((i.adjustedTotal ?? i.total) || 0), 0));
+  $('#rep-month-gst-sales').textContent = fmtMoney(monthGst.reduce((s, i) => s + getDisplayTotal(i), 0));
+  $('#rep-month-gst-bills').textContent = `${monthGst.length} bills`;
+  $('#rep-month-walkin-sales').textContent = fmtMoney(monthWalkin.reduce((s, i) => s + getDisplayTotal(i), 0));
+  $('#rep-month-walkin-bills').textContent = `${monthWalkin.length} bills`;
+  $('#rep-alltime-sales').textContent = fmtMoney(invoices.reduce((s, i) => s + getDisplayTotal(i), 0));
   $('#rep-alltime-bills').textContent = `${invoices.length} bills`;
 
   const from = $('#rep-date-from').value;
   const to = $('#rep-date-to').value;
   let filtered = invoices;
   if (from) filtered = filtered.filter(i => (i.date || '').slice(0, 10) >= from);
-  if (to) filtered = filtered.filter(i => (i.date || '').slice(0, 10) <= to);
+  if (to)   filtered = filtered.filter(i => (i.date || '').slice(0, 10) <= to);
+  if (state.repCustFilter === 'gst')    filtered = filtered.filter(i => i.customerGst);
+  if (state.repCustFilter === 'walkin') filtered = filtered.filter(i => !i.customerGst);
 
   const body = $('#bills-body');
   if (!filtered.length) {
@@ -1931,9 +2181,9 @@ async function renderReports() {
       const gstBadge = i.customerGst
         ? ` <span class="text-xs bg-green-100 text-green-700 px-1 rounded" title="GSTIN: ${escapeHTML(i.customerGst)}">GST</span>`
         : '';
-      const reportedTotal = i.adjustedTotal ?? i.total;
-      const adjBadge = i.adjustedTotal != null
-        ? ` <span class="text-xs bg-orange-100 text-orange-700 px-1 rounded" title="Original: ${fmtMoney(i.total)}">adj</span>`
+      const reportedTotal = getDisplayTotal(i);
+      const adjBadge = i._gstOriginalItems
+        ? ` <span class="text-xs bg-orange-100 text-orange-700 px-1 rounded" title="${state.currentUser === 'user2' ? 'Filed: ' + fmtMoney(i.total) : 'Scaled'}">adj</span>`
         : '';
       return `<tr>
         <td class="mono">${escapeHTML(i.invoiceNo)}</td>
@@ -2010,283 +2260,249 @@ function downloadBlob(blob, name) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-// ========== GST FILING ADJUSTMENT ==========
-function wireGstAdjust() {
-  const monthEl = $('#gst-adj-month');
-  if (monthEl) monthEl.value = new Date().toISOString().slice(0, 7);
-  $('#btn-gst-adj-preview').addEventListener('click', previewGstAdjust);
-  $('#btn-gst-adj-apply').addEventListener('click', applyGstAdjust);
-  $('#btn-gst-adj-reset').addEventListener('click', resetGstAdjust);
-  $('#btn-adj-scale').addEventListener('click', () => setAdjMethod('scale'));
-  $('#btn-adj-items').addEventListener('click', () => setAdjMethod('items'));
+// ========== VOID BILLS ==========
+function wireVoidBills() {
+  $('#btn-scale-down').addEventListener('click', openVoidBillsModal);
+  $('#void-month').addEventListener('change', renderVoidBillsList);
+  $('#btn-void-enter').addEventListener('click', applyVoidBills);
+  $('#btn-void-restore').addEventListener('click', restoreVoidBills);
+  $('#btn-void-pdf').addEventListener('click', downloadVoidBillsPDF);
 }
 
-function setAdjMethod(method) {
-  state.gstAdjMethod = method;
-  const isItems = method === 'items';
-  $('#btn-adj-scale').className = `px-3 py-2 font-medium transition-colors ${!isItems ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`;
-  $('#btn-adj-items').className = `px-3 py-2 font-medium transition-colors ${isItems  ? 'bg-orange-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`;
-  const note = $('#adj-method-note');
-  if (note) note.textContent = isItems
-    ? 'Remove items: deletes the cheapest line items from adjustable bills until the total is reduced. Stock counts are never changed — inventory stays accurate.'
-    : 'Scale totals: adjusts the reported bill total proportionally. Line items are untouched. Inventory is never affected.';
-  // Clear any previous preview when method changes
-  $('#gst-adj-result').classList.add('hidden');
-  $('#gst-adj-actions').classList.add('hidden');
+async function openVoidBillsModal() {
+  $('#void-month').value = new Date().toISOString().slice(0, 7);
+  $('#void-target').value = '';
+  await renderVoidBillsList();
+  openModal('modal-void-bills');
 }
 
-async function previewGstAdjust() {
-  const month = $('#gst-adj-month').value;
-  const targetStr = $('#gst-adj-target').value.trim();
-  const target = parseFloat(targetStr);
+async function renderVoidBillsList() {
+  const month = $('#void-month').value;
+  const body = $('#void-bills-list');
+  if (!month) { body.innerHTML = ''; return; }
 
-  if (!month) return toast('Select a month first', 'error');
+  const invoices = await db.all('invoices');
+  const monthInv = invoices
+    .filter(i => (i.date || '').slice(0, 7) === month && !i.customerGst)
+    .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+
+  if (!monthInv.length) {
+    body.innerHTML = `<div class="p-3 text-gray-400 text-center text-xs">No bills</div>`;
+    return;
+  }
+
+  const rows = monthInv.map(i => {
+    const d = new Date(i.date);
+    const modified = !!i._gstOriginalItems;
+    return `<div class="flex items-center gap-3 px-3 py-2 border-b last:border-0 ${modified ? 'bg-orange-50' : ''}">
+      <span class="mono text-xs text-gray-500">${escapeHTML(i.invoiceNo)}</span>
+      <span class="text-xs text-gray-400">${d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</span>
+      <span class="flex-1 text-xs truncate">${escapeHTML(i.customerName || '')}</span>
+      <span class="font-semibold text-sm">${fmtMoney(i.total)}</span>
+      ${modified ? `<span class="text-xs text-orange-400">●</span>` : ''}
+    </div>`;
+  }).join('');
+
+  const total = monthInv.reduce((s, i) => s + (i.total || 0), 0);
+  body.innerHTML = rows + `<div class="flex justify-between px-3 py-2 bg-gray-50 font-semibold text-sm">
+    <span>Total</span><span>${fmtMoney(total)}</span>
+  </div>`;
+}
+
+async function applyVoidBills() {
+  const month = $('#void-month').value;
+  const target = parseFloat($('#void-target').value);
+  if (!month || isNaN(target) || target < 0) return;
 
   const invoices = await db.all('invoices');
   const monthInv = invoices.filter(i => (i.date || '').slice(0, 7) === month);
-
   const protectedInv = monthInv.filter(i => i.customerGst);
   const adjustableInv = monthInv.filter(i => !i.customerGst);
 
   const protectedTotal = protectedInv.reduce((s, i) => s + (i.total || 0), 0);
   const adjustableTotal = adjustableInv.reduce((s, i) => s + (i.total || 0), 0);
-  const currentReported = protectedTotal + adjustableInv.reduce((s, i) => s + ((i.adjustedTotal ?? i.total) || 0), 0);
 
-  const resultDiv = $('#gst-adj-result');
-  const actionsDiv = $('#gst-adj-actions');
-  resultDiv.classList.remove('hidden');
-
-  let html = `<div class="grid md:grid-cols-3 gap-3 mb-3">
-    <div class="bg-gray-50 rounded p-3">
-      <div class="text-xs text-gray-500 uppercase tracking-wide">Currently reported (${month})</div>
-      <div class="text-xl font-bold mt-1">${fmtMoney(currentReported)}</div>
-      <div class="text-xs text-gray-400 mt-1">${monthInv.length} bills total</div>
-    </div>
-    <div class="bg-green-50 rounded p-3">
-      <div class="text-xs text-gray-500 uppercase tracking-wide">Protected — customer has GST</div>
-      <div class="text-xl font-bold mt-1 text-green-700">${fmtMoney(protectedTotal)}</div>
-      <div class="text-xs text-gray-400 mt-1">${protectedInv.length} bills — never touched</div>
-    </div>
-    <div class="bg-blue-50 rounded p-3">
-      <div class="text-xs text-gray-500 uppercase tracking-wide">Adjustable — no customer GST</div>
-      <div class="text-xl font-bold mt-1 text-blue-700">${fmtMoney(adjustableTotal)}</div>
-      <div class="text-xs text-gray-400 mt-1">${adjustableInv.length} bills</div>
-    </div>
-  </div>`;
-
-  if (isNaN(target)) {
-    resultDiv.innerHTML = html + `<p class="text-sm text-gray-500">Enter a target amount above to see the adjustment preview.</p>`;
-    actionsDiv.classList.add('hidden');
-    return;
-  }
-
-  if (target >= currentReported) {
-    resultDiv.innerHTML = html + `<div class="p-3 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800">Target ${fmtMoney(target)} is ≥ current reported total. No adjustment needed.</div>`;
-    actionsDiv.classList.add('hidden');
-    return;
-  }
-
-  if (target < protectedTotal) {
-    resultDiv.innerHTML = html + `<div class="p-3 bg-red-50 border border-red-200 rounded text-sm text-red-800">Target ${fmtMoney(target)} is less than the protected bills total (${fmtMoney(protectedTotal)}). Cannot reduce below this — those customers file their own GST.</div>`;
-    actionsDiv.classList.add('hidden');
-    return;
-  }
-
-  if (adjustableInv.length === 0) {
-    resultDiv.innerHTML = html + `<div class="p-3 bg-red-50 border border-red-200 rounded text-sm text-red-800">Every bill this month has a customer GST number. No bills can be adjusted.</div>`;
-    actionsDiv.classList.add('hidden');
-    return;
-  }
+  if (!adjustableInv.length || target < protectedTotal || !adjustableTotal) return;
 
   const adjustableTarget = target - protectedTotal;
-  const reduction = adjustableTotal - adjustableTarget;
-  const alreadyAdjusted = adjustableInv.filter(i => i.adjustedTotal != null || (i._gstRemovedItems && i._gstRemovedItems.length > 0)).length;
-  const overwriteNote = alreadyAdjusted > 0 ? `<div class="text-xs text-orange-600">${alreadyAdjusted} bill(s) already adjusted — will be overwritten.</div>` : '';
-
-  if (state.gstAdjMethod === 'items') {
-    // Simulate item removal to show how many items would be removed
-    const allItems = [];
-    for (const inv of adjustableInv) {
-      for (const item of inv.items || []) {
-        allItems.push({ inv, item, lineTotal: (item.price || 0) * (item.qty || 0) });
-      }
-    }
-    allItems.sort((a, b) => a.lineTotal - b.lineTotal);
-    const remaining = new Map(adjustableInv.map(inv => [inv.id, [...(inv.items || [])]]));
-    let simReduced = 0, simCount = 0;
-    for (const { inv, item } of allItems) {
-      if (simReduced >= reduction) break;
-      if ((remaining.get(inv.id) || []).length <= 1) continue;
-      remaining.get(inv.id).splice(remaining.get(inv.id).findIndex(x => x === item), 1);
-      simReduced += (item.price || 0) * (item.qty || 0);
-      simCount++;
-    }
-    const achievedTotal = protectedTotal + (adjustableTotal - simReduced);
-    html += `<div class="p-3 bg-orange-50 border border-orange-200 rounded text-sm space-y-1">
-      <div class="font-semibold text-orange-800">Preview — Remove items</div>
-      <div class="text-orange-700">
-        <strong>${simCount}</strong> item(s) will be deleted from adjustable bills (cheapest first).
-        Reduction: <strong>${fmtMoney(simReduced)}</strong>.
-      </div>
-      <div class="font-semibold text-orange-800">Achieved reported total: ~${fmtMoney(achievedTotal)}</div>
-      <div class="text-xs text-gray-500">Stock counts are NOT changed. Removed items can be restored with "Reset Adjustments".</div>
-      ${overwriteNote}
-    </div>`;
-  } else {
-    const scale = adjustableTarget / adjustableTotal;
-    html += `<div class="p-3 bg-orange-50 border border-orange-200 rounded text-sm space-y-1">
-      <div class="font-semibold text-orange-800">Preview — Scale totals</div>
-      <div class="text-orange-700">
-        Adjustable bills scaled: <strong>${fmtMoney(adjustableTotal)}</strong> → <strong>${fmtMoney(adjustableTarget)}</strong>
-        &nbsp;(reduction <strong>${fmtMoney(reduction)}</strong>, scale ${(scale * 100).toFixed(1)}%)
-      </div>
-      <div class="font-semibold text-orange-800">Final reported total: ${fmtMoney(protectedTotal + adjustableTarget)}</div>
-      <div class="text-xs text-gray-500">Line items and stock are not changed — only the reported invoice total is adjusted.</div>
-      ${overwriteNote}
-    </div>`;
-  }
-
-  resultDiv.innerHTML = html;
-  actionsDiv.classList.remove('hidden');
-}
-
-async function applyGstAdjust() {
-  const month = $('#gst-adj-month').value;
-  const target = parseFloat($('#gst-adj-target').value.trim());
-
-  if (!month || isNaN(target)) return toast('Enter month and target amount', 'error');
-
-  const invoices = await db.all('invoices');
-  const monthInv = invoices.filter(i => (i.date || '').slice(0, 7) === month);
-  const protectedInv = monthInv.filter(i => i.customerGst);
-  const adjustableInv = monthInv.filter(i => !i.customerGst);
-
-  const protectedTotal = protectedInv.reduce((s, i) => s + (i.total || 0), 0);
-  const adjustableTotal = adjustableInv.reduce((s, i) => s + (i.total || 0), 0);
-
-  if (adjustableInv.length === 0) return toast('No adjustable bills this month', 'error');
-  if (target < protectedTotal) return toast(`Target is less than protected total (${fmtMoney(protectedTotal)})`, 'error');
-  if (adjustableTotal === 0) return toast('Adjustable bills have zero total', 'error');
-
-  if (state.gstAdjMethod === 'items') {
-    if (!confirm(`Apply GST adjustment for ${month} by removing items?\n\nCheapest items will be deleted from adjustable bills until the total reaches the target. Stock counts are NOT changed — inventory stays accurate.`)) return;
-    await applyGstAdjustRemoveItems(adjustableInv, target - protectedTotal);
-  } else {
-    if (!confirm(`Apply GST adjustment for ${month} by scaling totals?\n\nReported totals will be proportionally scaled down. Line items and stock are not changed.`)) return;
-    await applyGstAdjustScaleTotals(adjustableInv, target - protectedTotal, adjustableTotal);
-  }
-
-  toast(`Adjustment applied to ${adjustableInv.length} bills`, 'success');
-  await previewGstAdjust();
-  renderReports();
-}
-
-async function applyGstAdjustScaleTotals(adjustableInv, adjustableTarget, adjustableTotal) {
-  const scale = adjustableTarget / adjustableTotal;
-  let computedTotals = adjustableInv.map(i => Math.round(i.total * scale * 100) / 100);
-
-  // Fix floating-point rounding remainder into the largest bill
-  const computedSum = computedTotals.reduce((s, v) => s + v, 0);
-  const remainder = Math.round((adjustableTarget - computedSum) * 100) / 100;
-  if (remainder !== 0) {
-    let maxIdx = 0;
-    for (let i = 1; i < computedTotals.length; i++) {
-      if (computedTotals[i] > computedTotals[maxIdx]) maxIdx = i;
-    }
-    computedTotals[maxIdx] = Math.round((computedTotals[maxIdx] + remainder) * 100) / 100;
-  }
-  for (let i = 0; i < adjustableInv.length; i++) {
-    // Clear any previously removed items before applying scale
-    const updated = { ...adjustableInv[i], adjustedTotal: computedTotals[i] };
-    await db.put('invoices', updated);
-  }
-}
-
-async function applyGstAdjustRemoveItems(adjustableInv, adjustableTarget) {
-  const adjustableTotal = adjustableInv.reduce((s, i) => s + (i.total || 0), 0);
   const reductionNeeded = adjustableTotal - adjustableTarget;
 
-  // Flatten all line items tagged with their invoice, sort cheapest first
-  const allItems = [];
+  // Mutable item copies + original snapshot per invoice
+  const billItems    = new Map(adjustableInv.map(inv => [inv.id, (inv.items || []).map(it => ({ ...it }))]));
+  const origSnapshot = new Map(adjustableInv.map(inv => [inv.id, (inv.items || []).map(it => ({ ...it }))]));
+  // Track total units remaining per bill (so we never empty a bill)
+  const billQty = new Map(adjustableInv.map(inv => [inv.id, (inv.items || []).reduce((s, l) => s + (l.qty || 0), 0)]));
+
+  // Expand every unit as a separate entry, sorted cheapest unit price first
+  const allUnits = [];
   for (const inv of adjustableInv) {
-    for (const item of inv.items || []) {
-      allItems.push({ inv, item, lineTotal: (item.price || 0) * (item.qty || 0) });
+    for (const item of billItems.get(inv.id)) {
+      for (let u = 0; u < (item.qty || 0); u++) {
+        allUnits.push({ invId: inv.id, item, unitPrice: item.price || 0 });
+      }
     }
   }
-  allItems.sort((a, b) => a.lineTotal - b.lineTotal);
-
-  // Track remaining and removed items per invoice
-  const remaining = new Map(adjustableInv.map(inv => [inv.id, [...(inv.items || [])]]));
-  const removed   = new Map(adjustableInv.map(inv => [inv.id, []]));
+  allUnits.sort((a, b) => a.unitPrice - b.unitPrice);
 
   let reducedSoFar = 0;
-  for (const { inv, item } of allItems) {
+  for (const { invId, item } of allUnits) {
     if (reducedSoFar >= reductionNeeded) break;
-    const billRemaining = remaining.get(inv.id);
-    if (billRemaining.length <= 1) continue; // always keep at least 1 item per bill
-    const idx = billRemaining.findIndex(x => x === item);
-    if (idx === -1) continue;
-    billRemaining.splice(idx, 1);
-    removed.get(inv.id).push(item);
-    reducedSoFar += (item.price || 0) * (item.qty || 0);
+    if ((billQty.get(invId) || 0) <= 1) continue; // keep at least 1 unit per bill
+    if ((item.qty || 0) <= 0) continue;
+    item.qty--;
+    billQty.set(invId, billQty.get(invId) - 1);
+    reducedSoFar += item.unitPrice;
   }
 
-  // Save updated invoices — stock movements are NOT touched
   for (const inv of adjustableInv) {
-    const updatedItems = remaining.get(inv.id);
-    const removedItems = removed.get(inv.id);
+    const updatedItems = billItems.get(inv.id).filter(i => (i.qty || 0) > 0);
     const newTotal = updatedItems.reduce((s, l) => s + (l.price || 0) * (l.qty || 0), 0);
-    const updated = {
+    await db.put('invoices', {
       ...inv,
       items: updatedItems,
       subtotal: newTotal,
       total: newTotal,
-      _gstRemovedItems: [...(inv._gstRemovedItems || []), ...removedItems],
-    };
-    delete updated.adjustedTotal; // remove scale-method field if present
-    await db.put('invoices', updated);
+      _gstOriginalItems: origSnapshot.get(inv.id), // full snapshot for restore
+    });
   }
+
+  toast('Done', 'success');
+  $('#void-target').value = '';
+  await renderVoidBillsList();
+  await renderReports();
 }
 
-async function resetGstAdjust() {
-  const month = $('#gst-adj-month').value;
-  if (!month) return toast('Select a month first', 'error');
-  if (!confirm(`Reset all GST adjustments for ${month}?\n\nBills will revert to their original totals and any removed items will be restored.`)) return;
+async function downloadVoidBillsPDF() {
+  const month = $('#void-month').value;
+  if (!month) return;
 
   const invoices = await db.all('invoices');
-  const monthInv = invoices.filter(i => (i.date || '').slice(0, 7) === month);
-  let resetCount = 0;
+  const monthInv = invoices
+    .filter(i => (i.date || '').slice(0, 7) === month)
+    .sort((a, b) => (a.invoiceNo || '').localeCompare(b.invoiceNo || ''));
+
+  if (!monthInv.length) { toast('No bills this month', 'error'); return; }
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const s = state.settings;
+  const pageW = 210, pageH = 297, mg = 12;
+  const colW = pageW - mg * 2;
+  let y = mg, pageNum = 1;
+
+  const addPageHeader = () => {
+    doc.setFontSize(7);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(150);
+    doc.text(`${s.shopName || ''} — ${month}`, mg, 8);
+    doc.text(`Page ${pageNum}`, pageW - mg, 8, { align: 'right' });
+    doc.setTextColor(0);
+    y = mg + 4;
+  };
+  addPageHeader();
 
   for (const inv of monthInv) {
-    let changed = false;
-    const updated = { ...inv };
+    const items = inv.items || [];
+    const billH = 20 + items.length * 5 + 8;
 
-    // Restore "scale totals" adjustment
-    if (updated.adjustedTotal != null) {
-      delete updated.adjustedTotal;
-      changed = true;
+    if (y + billH > pageH - mg) {
+      doc.addPage();
+      pageNum++;
+      addPageHeader();
     }
 
-    // Restore removed items from "remove items" adjustment
-    if (updated._gstRemovedItems && updated._gstRemovedItems.length > 0) {
-      const restoredItems = [...(updated.items || []), ...updated._gstRemovedItems];
-      const newTotal = restoredItems.reduce((s, l) => s + (l.price || 0) * (l.qty || 0), 0);
-      updated.items = restoredItems;
-      updated.subtotal = newTotal;
-      updated.total = newTotal;
-      delete updated._gstRemovedItems;
-      changed = true;
+    const d = new Date(inv.date);
+    const dateStr = d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+
+    // Invoice header row
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'bold');
+    doc.text(inv.invoiceNo || '', mg, y);
+    doc.setFont('helvetica', 'normal');
+    doc.text(dateStr, pageW - mg, y, { align: 'right' });
+    y += 4;
+
+    if (inv.customerName) {
+      doc.setFontSize(7);
+      doc.text(inv.customerName + (inv.customerPhone ? `  ${inv.customerPhone}` : ''), mg, y);
+      if (inv.customerGst) doc.text(`GSTIN: ${inv.customerGst}`, pageW - mg, y, { align: 'right' });
+      y += 4;
     }
 
-    if (changed) {
-      await db.put('invoices', updated);
-      resetCount++;
+    // Column headers
+    doc.setFontSize(6.5);
+    doc.setTextColor(120);
+    doc.text('Item', mg, y);
+    doc.text('Qty', mg + colW * 0.62, y);
+    doc.text('Rate', mg + colW * 0.75, y);
+    doc.text('Amount', pageW - mg, y, { align: 'right' });
+    doc.setTextColor(0);
+    y += 1.5;
+    doc.setDrawColor(180);
+    doc.line(mg, y, pageW - mg, y);
+    y += 3;
+
+    // Line items
+    doc.setFontSize(7);
+    doc.setFont('helvetica', 'normal');
+    for (const item of items) {
+      const name = (item.name || '').length > 30 ? item.name.slice(0, 29) + '…' : item.name;
+      doc.text(name, mg, y);
+      doc.text(String(item.qty || 0), mg + colW * 0.62, y);
+      doc.text(fmtMoney(item.price || 0), mg + colW * 0.75, y);
+      doc.text(fmtMoney((item.price || 0) * (item.qty || 0)), pageW - mg, y, { align: 'right' });
+      y += 5;
     }
+
+    // Total
+    doc.setDrawColor(180);
+    doc.line(mg, y, pageW - mg, y);
+    y += 3;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.text('Total', mg, y);
+    doc.text(fmtMoney(inv.total), pageW - mg, y, { align: 'right' });
+    doc.setFont('helvetica', 'normal');
+    y += 4;
+
+    // Bill separator
+    doc.setDrawColor(210);
+    doc.setLineDashPattern([2, 2], 0);
+    doc.line(mg, y, pageW - mg, y);
+    doc.setLineDashPattern([], 0);
+    doc.setDrawColor(0);
+    y += 5;
   }
 
-  toast(`Reset adjustments on ${resetCount} bill(s)`, 'success');
-  await previewGstAdjust();
-  renderReports();
+  // Grand total summary
+  if (y + 10 > pageH - mg) { doc.addPage(); pageNum++; addPageHeader(); }
+  const grandTotal = monthInv.reduce((s, i) => s + (i.total || 0), 0);
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'bold');
+  doc.text(`${monthInv.length} bills   Grand Total: ${fmtMoney(grandTotal)}`, mg, y);
+
+  doc.save(`bills-${month}.pdf`);
+  toast('PDF downloaded', 'success');
+}
+
+async function restoreVoidBills() {
+  const month = $('#void-month').value;
+  if (!month) return;
+  const invoices = await db.all('invoices');
+  const monthInv = invoices.filter(i => (i.date || '').slice(0, 7) === month);
+
+  for (const inv of monthInv) {
+    if (!inv._gstOriginalItems) continue;
+    const restoredItems = inv._gstOriginalItems;
+    const newTotal = restoredItems.reduce((s, l) => s + (l.price || 0) * (l.qty || 0), 0);
+    const updated = { ...inv, items: restoredItems, subtotal: newTotal, total: newTotal };
+    delete updated._gstOriginalItems;
+    await db.put('invoices', updated);
+  }
+
+  toast('Restored', 'success');
+  await renderVoidBillsList();
+  await renderReports();
 }
 
 // ========== SETTINGS ==========
@@ -2306,6 +2522,10 @@ function applySettingsToForm() {
   $('#set-inv-prefix').value = s.invoicePrefix || '';
   $('#set-inv-next').value = s.nextInvoiceNo || 1;
   $('#set-footer').value = s.footer || '';
+  $('#set-user1-name').value = s.user1Name || 'accounts';
+  $('#set-user1-pass').value = s.user1Pass || '';
+  $('#set-user2-name').value = s.user2Name || 'admin';
+  $('#set-user2-pass').value = s.user2Pass || '';
 }
 
 async function saveSettings() {
@@ -2317,6 +2537,14 @@ async function saveSettings() {
   s.invoicePrefix = $('#set-inv-prefix').value.trim() || 'INV-';
   s.nextInvoiceNo = Math.max(1, parseInt($('#set-inv-next').value || '1', 10));
   s.footer = $('#set-footer').value.trim();
+  const u1Name = $('#set-user1-name').value.trim();
+  const u1Pass = $('#set-user1-pass').value;
+  const u2Name = $('#set-user2-name').value.trim();
+  const u2Pass = $('#set-user2-pass').value;
+  if (u1Name) s.user1Name = u1Name;
+  if (u1Pass) s.user1Pass = u1Pass;
+  if (u2Name) s.user2Name = u2Name;
+  if (u2Pass) s.user2Pass = u2Pass;
   for (const [k, v] of Object.entries(s)) await db.setSetting(k, v);
   toast('Settings saved', 'success');
 }
@@ -2488,72 +2716,105 @@ function closeCameraScanner() {
   _lastScannedCode = '';
 }
 
-// ========== ADMIN AUTH ==========
-function applyAdminState() {
-  const loggedIn = state.adminLoggedIn;
-  // Show/hide admin-only tabs
-  $$('.admin-tab').forEach(btn => {
-    btn.style.display = loggedIn ? '' : 'none';
+// ========== ADMIN AUTH (two-user) ==========
+function applyUserState() {
+  const u = state.currentUser;
+
+  // Tab visibility:
+  //   public (null): Sell, Products, Labels
+  //   user1 (accounts): + Reports
+  //   user2 (admin): + Inventory, Daily Sales, Reports, Settings
+  $$('.tab-btn').forEach(btn => {
+    const tab = btn.dataset.tab;
+    const always = ['billing', 'products', 'labels'].includes(tab);
+    const anyUser = tab === 'reports';
+    const user2Only = ['inventory', 'daily', 'settings'].includes(tab);
+    if (always) {
+      btn.style.display = '';
+    } else if (anyUser) {
+      btn.style.display = u ? '' : 'none';
+    } else if (user2Only) {
+      btn.style.display = u === 'user2' ? '' : 'none';
+    }
   });
-  // Update admin button label
+
+  // Admin button label / colour
   const label = $('#admin-btn-label');
-  if (label) label.textContent = loggedIn ? 'Admin ✓' : 'Admin';
   const btn = $('#btn-admin-login');
-  if (btn) btn.style.background = loggedIn ? '#dcfce7' : '';
-  if (btn) btn.style.color      = loggedIn ? '#15803d' : '';
+  if (u) {
+    const name = u === 'user1'
+      ? (state.settings.user1Name || 'accounts')
+      : (state.settings.user2Name || 'admin');
+    if (label) label.textContent = name + ' ✓';
+    if (btn) { btn.style.background = '#dcfce7'; btn.style.color = '#15803d'; }
+  } else {
+    if (label) label.textContent = 'Admin';
+    if (btn) { btn.style.background = ''; btn.style.color = ''; }
+  }
+
+  // Scale Down button: only for user2
+  const scaleBtn = $('#btn-scale-down');
+  if (scaleBtn) scaleBtn.classList.toggle('hidden', u !== 'user2');
+
+  // User credentials section in Settings: only for user2
+  const userCredsSection = $('#user-creds-section');
+  if (userCredsSection) userCredsSection.classList.toggle('hidden', u !== 'user2');
 }
 
 function openAdminModal() {
-  // Show the right panel depending on login state
-  $('#admin-login-form').classList.toggle('hidden', state.adminLoggedIn);
-  $('#admin-logout-form').classList.toggle('hidden', !state.adminLoggedIn);
-  if (state.adminLoggedIn) {
-    $('#admin-logged-user').textContent = state.settings.adminUser || 'admin';
+  const loggedIn = !!state.currentUser;
+  $('#admin-login-form').classList.toggle('hidden', loggedIn);
+  $('#admin-logout-form').classList.toggle('hidden', !loggedIn);
+  if (loggedIn) {
+    const name = state.currentUser === 'user1'
+      ? (state.settings.user1Name || 'accounts')
+      : (state.settings.user2Name || 'admin');
+    $('#admin-logged-user').textContent = name;
   } else {
     $('#admin-username').value = '';
     $('#admin-password').value = '';
     $('#admin-login-error').classList.add('hidden');
   }
   openModal('modal-admin');
-  if (!state.adminLoggedIn) setTimeout(() => $('#admin-username').focus(), 50);
+  if (!loggedIn) setTimeout(() => $('#admin-username').focus(), 50);
 }
 
-async function wireAdmin() {
+function wireAdmin() {
   $('#btn-admin-login').addEventListener('click', openAdminModal);
-
   $('#btn-admin-submit').addEventListener('click', attemptAdminLogin);
-  $('#admin-password').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') attemptAdminLogin();
-  });
-
+  $('#admin-password').addEventListener('keydown', (e) => { if (e.key === 'Enter') attemptAdminLogin(); });
   $('#btn-admin-logout').addEventListener('click', () => {
-    state.adminLoggedIn = false;
-    applyAdminState();
-    // If currently on an admin-only tab, go back to billing
+    state.currentUser = null;
+    applyUserState();
     const active = document.querySelector('.tab-btn[data-active="true"]');
-    if (active && active.classList.contains('admin-tab')) switchTab('billing');
+    if (active && !['billing','products','labels'].includes(active.dataset.tab)) switchTab('billing');
     closeAnyModal();
     toast('Logged out', '');
   });
-
-
 }
 
-async function attemptAdminLogin() {
-  const user = $('#admin-username').value.trim();
+function attemptAdminLogin() {
+  const user = $('#admin-username').value.trim().toLowerCase();
   const pass = $('#admin-password').value;
-  const storedUser = state.settings.adminUser || 'admin';
-  const storedPass = state.settings.adminPass || 'admin123';
-  if (user === storedUser && pass === storedPass) {
-    state.adminLoggedIn = true;
-    applyAdminState();
-    closeAnyModal();
-    toast('Welcome, ' + storedUser, 'success');
+  const u1 = (state.settings.user1Name || 'accounts').toLowerCase();
+  const u1p = state.settings.user1Pass || '1234';
+  const u2 = (state.settings.user2Name || 'admin').toLowerCase();
+  const u2p = state.settings.user2Pass || 'admin123';
+
+  if (user === u1 && pass === u1p) {
+    state.currentUser = 'user1';
+  } else if (user === u2 && pass === u2p) {
+    state.currentUser = 'user2';
   } else {
     $('#admin-login-error').classList.remove('hidden');
     $('#admin-password').value = '';
     $('#admin-password').focus();
+    return;
   }
+  applyUserState();
+  closeAnyModal();
+  if (state.currentUser === 'user1') switchTab('reports');
+  toast('Welcome', 'success');
 }
 
 // ========== Boot ==========

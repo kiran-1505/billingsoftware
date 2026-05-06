@@ -1,8 +1,8 @@
 // db.js — IndexedDB wrapper for ToolBill
-// Stores: products, invoices, stockMovements, settings, categories, drafts
+// Stores: products, invoices, stockMovements, settings, categories, drafts, customers
 
 const DB_NAME = 'toolbill';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 let _dbPromise = null;
 
@@ -39,6 +39,13 @@ function openDB() {
       if (!db.objectStoreNames.contains('drafts')) {
         const s = db.createObjectStore('drafts', { keyPath: 'id', autoIncrement: true });
         s.createIndex('date', 'date', { unique: false });
+      }
+      // v3: customers
+      if (!db.objectStoreNames.contains('customers')) {
+        const s = db.createObjectStore('customers', { keyPath: 'id', autoIncrement: true });
+        s.createIndex('phone', 'phone', { unique: false });
+        s.createIndex('name',  'name',  { unique: false });
+        s.createIndex('gst',   'gst',   { unique: false });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -137,21 +144,22 @@ export const db = {
 
   // ----- Backup / restore -----
   async exportAll() {
-    const [products, invoices, stockMovements, settingsArr, categories, drafts] = await Promise.all([
+    const [products, invoices, stockMovements, settingsArr, categories, drafts, customers] = await Promise.all([
       this.all('products'),
       this.all('invoices'),
       this.all('stockMovements'),
       this.all('settings'),
       this.all('categories'),
       this.all('drafts'),
+      this.all('customers'),
     ]);
     const settings = {};
     for (const s of settingsArr) settings[s.key] = s.value;
     return {
       app: 'toolbill',
-      version: 2,
+      version: 3,
       exportedAt: new Date().toISOString(),
-      products, invoices, stockMovements, settings, categories, drafts,
+      products, invoices, stockMovements, settings, categories, drafts, customers,
     };
   },
 
@@ -159,7 +167,7 @@ export const db = {
     if (!data || data.app !== 'toolbill') throw new Error('Not a ToolBill backup');
     const d = await openDB();
     await new Promise((resolve, reject) => {
-      const t = d.transaction(['products','invoices','stockMovements','settings','categories','drafts'], 'readwrite');
+      const t = d.transaction(['products','invoices','stockMovements','settings','categories','drafts','customers'], 'readwrite');
       t.oncomplete = resolve;
       t.onerror = () => reject(t.error);
       t.onabort = () => reject(t.error || new Error('transaction aborted'));
@@ -169,12 +177,14 @@ export const db = {
       const sStore = t.objectStore('settings');
       const cStore = t.objectStore('categories');
       const dStore = t.objectStore('drafts');
-      pStore.clear(); iStore.clear(); mStore.clear(); sStore.clear(); cStore.clear(); dStore.clear();
-      (data.products || []).forEach(p => pStore.put(p));
-      (data.invoices || []).forEach(i => iStore.put(i));
+      const cuStore = t.objectStore('customers');
+      pStore.clear(); iStore.clear(); mStore.clear(); sStore.clear(); cStore.clear(); dStore.clear(); cuStore.clear();
+      (data.products   || []).forEach(p => pStore.put(p));
+      (data.invoices   || []).forEach(i => iStore.put(i));
       (data.stockMovements || []).forEach(m => mStore.put(m));
       (data.categories || []).forEach(c => cStore.put(c));
-      (data.drafts || []).forEach(d => dStore.put(d));
+      (data.drafts     || []).forEach(d => dStore.put(d));
+      (data.customers  || []).forEach(c => cuStore.put(c));
       const settings = data.settings || {};
       Object.keys(settings).forEach(k => sStore.put({ key: k, value: settings[k] }));
     });
@@ -188,6 +198,7 @@ export const db = {
       this.clear('settings'),
       this.clear('categories'),
       this.clear('drafts'),
+      this.clear('customers'),
     ]);
   },
 };
