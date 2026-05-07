@@ -94,7 +94,6 @@ export async function renderReports() {
   }
 
   // Top items — admin sees original (pre-scale) quantities
-  const isAdmin = state.currentUser === 'user2';
   const counter = {};
   for (const inv of invoices) {
     const items = isAdmin && inv._gstOriginalItems ? inv._gstOriginalItems : (inv.items || []);
