@@ -27,9 +27,10 @@ export async function renderVoidBillsList() {
     return;
   }
 
+  const isAdmin = state.currentUser === 'user2';
   const rows = monthInv.map(i => {
     const d        = new Date(i.date);
-    const modified = !!i._gstOriginalItems;
+    const modified = isAdmin && !!i._gstOriginalItems;
     const origTotal = modified
       ? i._gstOriginalItems.reduce((s, l) => s + (l.price || 0) * (l.qty || 0), 0)
       : null;
