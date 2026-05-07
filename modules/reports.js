@@ -19,6 +19,11 @@ export function getDisplayTotal(inv) {
 }
 
 export async function renderReports() {
+  const isAdmin = state.currentUser === 'user2';
+  $('#bills-head-paid').classList.toggle('hidden', !isAdmin);
+  $('#bills-foot-paid').classList.toggle('hidden', !isAdmin);
+  $('#top-items-section').classList.toggle('hidden', isAdmin ? false : true);
+
   const invoices = await db.all('invoices');
   invoices.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   const today       = todayISO();
@@ -68,7 +73,7 @@ export async function renderReports() {
         <td>${escapeHTML(i.customerName || '')}${gstBadge}</td>
         <td class="text-right">${itemCount}</td>
         <td class="text-right font-semibold">${fmtMoney(reportedTotal)}${adjBadge}</td>
-        <td class="text-right">${i.amountPaid != null ? fmtMoney(i.amountPaid) : '—'}</td>
+        ${isAdmin ? `<td class="text-right">${i.amountPaid != null ? fmtMoney(i.amountPaid) : '—'}</td>` : ''}
         <td><button class="text-blue-600 hover:underline text-sm" data-reprint="${i.id}">Reprint</button></td>
       </tr>`;
     }).join('');
