@@ -92,13 +92,13 @@ export async function applyVoidBills() {
     allUnits.sort((a, b) => a.unitPrice - b.unitPrice);
 
     let reducedSoFar = 0;
-    for (const { invId, item } of allUnits) {
+    for (const { invId, item, unitPrice } of allUnits) {
       if (reducedSoFar >= reductionNeeded) break;
       if ((billQty.get(invId) || 0) <= 1) continue;
       if ((item.qty || 0) <= 0) continue;
       item.qty--;
       billQty.set(invId, billQty.get(invId) - 1);
-      reducedSoFar += item.unitPrice;
+      reducedSoFar += unitPrice;
     }
 
     for (const inv of adjustableInv) {
