@@ -91,15 +91,21 @@ export async function applyVoidBills() {
     }
     allUnits.sort((a, b) => a.unitPrice - b.unitPrice);
 
-    let reducedSoFar = 0;
+    let remaining = reductionNeeded;
     for (const { invId, item, unitPrice } of allUnits) {
-      if (reducedSoFar >= reductionNeeded) break;
+      if (remaining <= 0) break;
       if ((billQty.get(invId) || 0) <= 1) continue;
       if ((item.qty || 0) <= 0) continue;
+      if (unitPrice > remaining) continue; // skip — would push total below target
       item.qty--;
       billQty.set(invId, billQty.get(invId) - 1);
-      reducedSoFar += unitPrice;
+      remaining -= unitPrice;
     }
+
+    const actualTotal = adjustableInv.reduce((s, inv) => {
+      const items = billItems.get(inv.id);
+      return s + items.reduce((t, l) => t + (l.price || 0) * (l.qty || 0), 0);
+    }, 0) + protectedTotal;
 
     for (const inv of adjustableInv) {
       const updatedItems = billItems.get(inv.id).filter(i => (i.qty || 0) > 0);
@@ -115,7 +121,8 @@ export async function applyVoidBills() {
       });
     }
 
-    toast('Done', 'success');
+    const msg = actualTotal === target ? 'Done' : `Done — closest achievable: ${fmtMoney(actualTotal)} (target ${fmtMoney(target)} not exact with these item prices)`;
+    toast(msg, 'success');
     $('#void-target').value = '';
     await renderVoidBillsList();
     await renderReports();

@@ -59,8 +59,8 @@ export async function renderReports() {
         ? ` <span class="text-xs bg-green-100 text-green-700 px-1 rounded" title="GSTIN: ${escapeHTML(i.customerGst)}">GST</span>`
         : '';
       const reportedTotal = getDisplayTotal(i);
-      const adjBadge      = i._gstOriginalItems
-        ? ` <span class="text-xs bg-orange-100 text-orange-700 px-1 rounded" title="${state.currentUser === 'user2' ? 'Filed: ' + fmtMoney(i.total) : 'Scaled'}">adj</span>`
+      const adjBadge      = (i._gstOriginalItems && state.currentUser === 'user2')
+        ? ` <span class="text-xs bg-orange-100 text-orange-700 px-1 rounded" title="Filed: ${fmtMoney(i.total)}">adj</span>`
         : '';
       return `<tr>
         <td class="mono">${escapeHTML(i.invoiceNo)}</td>
@@ -88,10 +88,12 @@ export async function renderReports() {
     foot.classList.add('hidden');
   }
 
-  // Top items
+  // Top items — admin sees original (pre-scale) quantities
+  const isAdmin = state.currentUser === 'user2';
   const counter = {};
   for (const inv of invoices) {
-    for (const l of inv.items || []) {
+    const items = isAdmin && inv._gstOriginalItems ? inv._gstOriginalItems : (inv.items || []);
+    for (const l of items) {
       const k = l.shortCode || '__' + l.name;
       if (!counter[k]) counter[k] = { name: l.name, shortCode: l.shortCode, qty: 0, rev: 0 };
       counter[k].qty += l.qty;
