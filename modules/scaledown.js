@@ -101,16 +101,16 @@ export async function applyVoidBills() {
     }
 
     for (const inv of adjustableInv) {
-      const updatedItems  = billItems.get(inv.id).filter(i => (i.qty || 0) > 0);
-      const newTotal      = updatedItems.reduce((s, l) => s + (l.price || 0) * (l.qty || 0), 0);
-      const newAmountPaid = inv.amountPaid != null ? Math.min(inv.amountPaid, newTotal) : null;
+      const updatedItems = billItems.get(inv.id).filter(i => (i.qty || 0) > 0);
+      const newTotal     = updatedItems.reduce((s, l) => s + (l.price || 0) * (l.qty || 0), 0);
       await db.put('invoices', {
         ...inv,
         items: updatedItems,
         subtotal: newTotal,
         total: newTotal,
-        amountPaid: newAmountPaid,
+        // amountPaid is the real cash received — never modified by GST filing adjustment
         _gstOriginalItems: inv._gstOriginalItems || origSnapshot.get(inv.id),
+        _gstOriginalAmountPaid: inv._gstOriginalAmountPaid ?? inv.amountPaid,
       });
     }
 
@@ -133,7 +133,11 @@ export async function restoreVoidBills() {
     if (!inv._gstOriginalItems) continue;
     const restoredItems = inv._gstOriginalItems;
     const newTotal      = restoredItems.reduce((s, l) => s + (l.price || 0) * (l.qty || 0), 0);
-    const updated       = { ...inv, items: restoredItems, subtotal: newTotal, total: newTotal };
+    const updated = { ...inv, items: restoredItems, subtotal: newTotal, total: newTotal };
+    if ('_gstOriginalAmountPaid' in inv) {
+      updated.amountPaid = inv._gstOriginalAmountPaid;
+      delete updated._gstOriginalAmountPaid;
+    }
     delete updated._gstOriginalItems;
     await db.put('invoices', updated);
   }
