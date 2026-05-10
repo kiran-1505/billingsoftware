@@ -36,7 +36,9 @@ export function renderProductsCategoryView() {
   }
   grid.innerHTML = cats.map(c => `
     <button class="cat-card text-left" data-cat="${escapeHTML(c.name)}">
-      ${c.image ? `<img src="${escapeHTML(c.image)}" class="w-full h-20 object-cover rounded mb-2 -mx-0" style="margin:-0" />` : ''}
+      ${c.image
+        ? `<img src="${escapeHTML(c.image)}" class="w-full h-20 object-cover rounded mb-2" />`
+        : `<div class="w-full h-20 rounded mb-2 bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-3xl">${escapeHTML(c.name.slice(0, 2).toUpperCase())}</div>`}
       <div class="font-semibold text-gray-800 truncate">${escapeHTML(c.name)}</div>
       <div class="text-xs text-gray-500 mt-1">${fmtInt(c.count)} ${c.count === 1 ? 'item' : 'items'}</div>
     </button>
