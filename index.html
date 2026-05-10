@@ -491,7 +491,7 @@
 
       <div class="max-w-xl bg-white rounded-lg shadow p-4">
         <h2 class="font-semibold text-gray-800 mb-2">App update</h2>
-        <p class="text-sm text-gray-600 mb-3">Current version: <strong id="current-sw-version">v14</strong></p>
+        <p class="text-sm text-gray-600 mb-3">Current version: <strong id="current-sw-version">—</strong></p>
         <div class="flex items-center gap-3 flex-wrap">
           <button id="btn-check-update" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Check for updates</button>
           <span id="update-status" class="text-sm text-gray-500"></span>
@@ -791,6 +791,12 @@ Spanner Set 10pc	Hand Tools	650	set	5	2"></textarea>
               if (sw.state === 'installed' && navigator.serviceWorker.controller) showUpdateReady();
             });
           }
+
+          // Show real version from active cache name
+          caches.keys().then(keys => {
+            const v = keys.find(k => k.startsWith('toolbill-'));
+            if (v) document.getElementById('current-sw-version').textContent = v.replace('toolbill-', '');
+          });
 
           // Already waiting when page opened
           if (reg.waiting) showUpdateReady();
