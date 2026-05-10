@@ -292,12 +292,15 @@ export function renderCategoryManager() {
     const canDelete = n === 0;
     return `
       <div class="flex items-center gap-2 p-2 border rounded">
-        <label class="cursor-pointer flex-shrink-0" title="Click to upload image">
-          ${c.image
-            ? `<img src="${escapeHTML(c.image)}" class="w-10 h-10 object-cover rounded border border-gray-200" />`
-            : `<div class="w-10 h-10 rounded bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-base" title="Click to upload image">${escapeHTML(c.name.slice(0, 2).toUpperCase())}</div>`}
-          <input type="file" accept="image/*" class="hidden" data-cat-img="${c.id}" />
-        </label>
+        <div class="relative flex-shrink-0">
+          <label class="cursor-pointer block" title="Click to upload image">
+            ${c.image
+              ? `<img src="${escapeHTML(c.image)}" class="w-10 h-10 object-cover rounded border border-gray-200" />`
+              : `<div class="w-10 h-10 rounded bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-base">${escapeHTML(c.name.slice(0, 2).toUpperCase())}</div>`}
+            <input type="file" accept="image/*" class="hidden" data-cat-img="${c.id}" />
+          </label>
+          ${c.image ? `<button data-cat-img-remove="${c.id}" title="Remove image" class="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full text-xs flex items-center justify-center leading-none">&times;</button>` : ''}
+        </div>
         <div class="flex-1">
           <input type="text" class="w-full p-1 border rounded" data-cat-edit="${c.id}" value="${escapeHTML(c.name)}" />
         </div>
@@ -367,6 +370,21 @@ export function renderCategoryManager() {
       renderProductsCategoryView();
       document.dispatchEvent(new CustomEvent('toolbill:categories-changed'));
       toast('Image updated', 'success');
+    });
+  });
+
+  box.querySelectorAll('[data-cat-img-remove]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id  = +btn.dataset.catImgRemove;
+      const cat = state.categories.find(x => x.id === id);
+      if (!cat) return;
+      delete cat.image;
+      await db.put('categories', cat);
+      await refreshCategories();
+      renderCategoryManager();
+      renderProductsCategoryView();
+      document.dispatchEvent(new CustomEvent('toolbill:categories-changed'));
+      toast('Image removed', 'success');
     });
   });
 }
