@@ -144,6 +144,8 @@ export async function applyVoidBills() {
     for (const inv of adjustableInv) {
       const updatedItems = billItems.get(inv.id).filter(i => (i.qty || 0) > 0);
       const newTotal     = updatedItems.reduce((s, l) => s + (l.price || 0) * (l.qty || 0), 0);
+      const unchanged    = newTotal === (inv.total || 0);
+      if (unchanged && !inv._gstOriginalItems) continue; // nothing changed, skip
       await db.put('invoices', {
         ...inv,
         items: updatedItems,
