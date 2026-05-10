@@ -1,5 +1,5 @@
 // sw.js — Service worker for offline PWA support
-const VERSION = 'toolbill-v32';
+const VERSION = 'toolbill-v33';
 const APP_SHELL = [
   './',
   './index.html',

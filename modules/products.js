@@ -295,7 +295,7 @@ export function renderCategoryManager() {
         <label class="cursor-pointer flex-shrink-0" title="Click to upload image">
           ${c.image
             ? `<img src="${escapeHTML(c.image)}" class="w-10 h-10 object-cover rounded border border-gray-200" />`
-            : `<div class="w-10 h-10 rounded border-2 border-dashed border-gray-300 flex items-center justify-center text-gray-400 text-xs text-center leading-tight">Add<br/>img</div>`}
+            : `<div class="w-10 h-10 rounded bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-base" title="Click to upload image">${escapeHTML(c.name.slice(0, 2).toUpperCase())}</div>`}
           <input type="file" accept="image/*" class="hidden" data-cat-img="${c.id}" />
         </label>
         <div class="flex-1">

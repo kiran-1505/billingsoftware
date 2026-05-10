@@ -351,7 +351,9 @@ export function renderSellPane() {
     }
     body.innerHTML = `<div class="sell-tiles">` + cats.map(c => `
       <button class="sell-cat-tile" data-sell-cat="${escapeHTML(c.name)}">
-        ${c.image ? `<img src="${escapeHTML(c.image)}" class="w-full h-16 object-cover rounded mb-1" />` : ''}
+        ${c.image
+          ? `<img src="${escapeHTML(c.image)}" class="w-full h-16 object-cover rounded mb-1" />`
+          : `<div class="w-full h-16 rounded mb-1 bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-2xl">${escapeHTML(c.name.slice(0, 2).toUpperCase())}</div>`}
         <div class="sell-cat-tile-name">${escapeHTML(c.name)}</div>
         <div class="sell-cat-tile-meta">${fmtInt(c.count)} ${c.count === 1 ? 'item' : 'items'}</div>
       </button>
