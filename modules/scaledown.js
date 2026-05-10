@@ -80,33 +80,66 @@ export async function applyVoidBills() {
     const billItems    = new Map(adjustableInv.map(inv => [inv.id, (inv.items || []).map(it => ({ ...it }))]));
     const origSnapshot = new Map(adjustableInv.map(inv => [inv.id, (inv.items || []).map(it => ({ ...it }))]));
 
-    // Build one entry per unit (qty=3 → 3 entries), sorted cheapest first
-    const allUnits = [];
+    // Track distinct line items with qty>0 per bill — each bill must keep ≥1 throughout
+    const billItemCount = new Map(adjustableInv.map(inv => [
+      inv.id,
+      billItems.get(inv.id).filter(i => (i.qty || 0) > 0).length,
+    ]));
+
+    let remaining = reductionNeeded;
+
+    // Pass 1: remove whole line items (cheapest lines first)
+    // A line is removed entirely (qty→0); bills must keep ≥1 line item
+    const allLines = [];
     for (const inv of adjustableInv) {
       for (const item of billItems.get(inv.id)) {
-        for (let u = 0; u < (item.qty || 0); u++) {
-          allUnits.push({ item, unitPrice: item.price || 0 });
-        }
+        if ((item.qty || 0) <= 0) continue;
+        allLines.push({ invId: inv.id, item, lineTotal: (item.price || 0) * (item.qty || 0) });
       }
     }
-    allUnits.sort((a, b) => a.unitPrice - b.unitPrice);
+    // Shuffle so no predictable pattern (looks like natural variation)
+    for (let i = allLines.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [allLines[i], allLines[j]] = [allLines[j], allLines[i]];
+    }
 
-    // Pass 1: remove whole units cheapest-first without going below target
-    let remaining = reductionNeeded;
-    for (const { item, unitPrice } of allUnits) {
+    for (const { invId, item, lineTotal } of allLines) {
       if (remaining <= 0) break;
-      if ((item.qty || 0) <= 0) continue;
-      if (unitPrice > remaining) continue;
-      item.qty--;
-      remaining -= unitPrice;
+      if (lineTotal > remaining) continue;
+      if (billItemCount.get(invId) <= 1) continue; // only item left — keep it
+      item.qty = 0;
+      remaining -= lineTotal;
+      billItemCount.set(invId, billItemCount.get(invId) - 1);
     }
 
-    // Pass 2: if a gap remains (no single unit fits), reduce the cheapest
-    // remaining item's price by exactly the gap — guarantees hitting target
+    // Pass 2: reduce quantities unit by unit (cheapest units first)
+    // Each bill must keep ≥1 item with qty≥1
     if (remaining > 0) {
-      const cheapest = allUnits.find(({ item }) => (item.qty || 0) > 0);
-      if (cheapest) cheapest.item.price = Math.round((cheapest.item.price - remaining) * 100) / 100;
+      const allUnits = [];
+      for (const inv of adjustableInv) {
+        for (const item of billItems.get(inv.id)) {
+          if ((item.qty || 0) <= 0) continue;
+          for (let u = 0; u < item.qty; u++) {
+            allUnits.push({ invId: inv.id, item, unitPrice: item.price || 0 });
+          }
+        }
+      }
+      for (let i = allUnits.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [allUnits[i], allUnits[j]] = [allUnits[j], allUnits[i]];
+      }
+
+      for (const { invId, item, unitPrice } of allUnits) {
+        if (remaining <= 0) break;
+        if ((item.qty || 0) <= 0) continue;
+        if (unitPrice > remaining) continue;
+        if (item.qty === 1 && billItemCount.get(invId) <= 1) continue; // last item — keep it
+        if (item.qty === 1) billItemCount.set(invId, billItemCount.get(invId) - 1);
+        item.qty--;
+        remaining -= unitPrice;
+      }
     }
+
 
     for (const inv of adjustableInv) {
       const updatedItems = billItems.get(inv.id).filter(i => (i.qty || 0) > 0);
