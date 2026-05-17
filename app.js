@@ -3,6 +3,7 @@ import { db } from './db.js';
 import {
   state, DEFAULT_SETTINGS, DEFAULT_CATEGORIES, nowISO, closeAnyModal,
   refreshCategories, refreshProducts, refreshDrafts, migrateLegacyProductCategories,
+  migrateScaledAmountPaid,
   populateCategorySelects, switchTab, wireTabs, wireModalClose, wireDateInputs,
 } from './modules/core.js';
 
@@ -37,6 +38,7 @@ async function init() {
   // Load products, migrate legacy codes, load drafts, build customer list
   await refreshProducts();
   await migrateLegacyProductCategories();
+  await migrateScaledAmountPaid();
   await refreshDrafts();
   await buildCustomerList();
 

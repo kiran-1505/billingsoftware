@@ -276,6 +276,27 @@ export async function refreshDrafts() {
   state.drafts.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 }
 
+// One-time: bills scaled down before the "amountPaid follows filed total" fix.
+// If a bill has _gstOriginalItems but no _gstOriginalAmountPaid, the stored
+// amountPaid is the real cash received and inv.total is the filed total.
+// Migrate so amountPaid = filed total and _gstOriginalAmountPaid keeps the real one.
+export async function migrateScaledAmountPaid() {
+  const invoices = await db.all('invoices');
+  let fixed = 0;
+  for (const inv of invoices) {
+    if (!inv._gstOriginalItems) continue;
+    if ('_gstOriginalAmountPaid' in inv) continue; // already migrated
+    if (inv.amountPaid == null) continue;          // nothing to preserve
+    if (inv.amountPaid === inv.total) continue;    // already aligned
+    const realPaid = inv.amountPaid;
+    inv._gstOriginalAmountPaid = realPaid;
+    inv.amountPaid = inv.total;
+    await db.put('invoices', inv);
+    fixed++;
+  }
+  if (fixed) console.log(`[toolbill] migrated amountPaid on ${fixed} scaled bill(s)`);
+}
+
 export async function migrateLegacyProductCategories() {
   let changed = 0;
   for (const p of state.products) {
