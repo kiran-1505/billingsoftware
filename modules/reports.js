@@ -22,6 +22,8 @@ export async function renderReports() {
   const isAdmin = state.currentUser === 'user2';
   $('#bills-head-paid').classList.toggle('hidden', !isAdmin);
   $('#bills-foot-paid').classList.toggle('hidden', !isAdmin);
+  $('#bills-head-actions')?.classList.toggle('hidden', !isAdmin);
+  $('#bills-foot-actions')?.classList.toggle('hidden', !isAdmin);
   $('#top-items-section').classList.toggle('hidden', isAdmin ? false : true);
 
   const invoices = await db.all('invoices');
@@ -77,7 +79,7 @@ export async function renderReports() {
         <td class="text-right">${itemCount}</td>
         <td class="text-right font-semibold">${fmtMoney(reportedTotal)}${adjBadge}</td>
         ${isAdmin ? (() => { const p = i._gstOriginalAmountPaid ?? i.amountPaid; return `<td class="text-right">${p != null ? fmtMoney(p) : '—'}</td>`; })() : ''}
-        <td><button class="text-blue-600 hover:underline text-sm" data-reprint="${i.id}">Reprint</button></td>
+        ${isAdmin ? `<td><button class="text-blue-600 hover:underline text-sm" data-reprint="${i.id}">Reprint</button></td>` : ''}
       </tr>`;
     }).join('');
     body.querySelectorAll('[data-reprint]').forEach(b => b.addEventListener('click', () => _reprintInvoice(+b.dataset.reprint)));
