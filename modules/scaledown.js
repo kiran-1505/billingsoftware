@@ -151,7 +151,8 @@ export async function applyVoidBills() {
         items: updatedItems,
         subtotal: newTotal,
         total: newTotal,
-        // amountPaid is the real cash received — never modified by GST filing adjustment
+        // Filed amountPaid follows the filed total; original is preserved for admin/restore
+        amountPaid: newTotal,
         _gstOriginalItems: inv._gstOriginalItems || origSnapshot.get(inv.id),
         _gstOriginalAmountPaid: inv._gstOriginalAmountPaid ?? inv.amountPaid,
       });

@@ -76,7 +76,7 @@ export async function renderReports() {
         <td>${escapeHTML(i.customerName || '')}${gstBadge}</td>
         <td class="text-right">${itemCount}</td>
         <td class="text-right font-semibold">${fmtMoney(reportedTotal)}${adjBadge}</td>
-        ${isAdmin ? `<td class="text-right">${i.amountPaid != null ? fmtMoney(i.amountPaid) : '—'}</td>` : ''}
+        ${isAdmin ? (() => { const p = i._gstOriginalAmountPaid ?? i.amountPaid; return `<td class="text-right">${p != null ? fmtMoney(p) : '—'}</td>`; })() : ''}
         <td><button class="text-blue-600 hover:underline text-sm" data-reprint="${i.id}">Reprint</button></td>
       </tr>`;
     }).join('');
@@ -88,7 +88,8 @@ export async function renderReports() {
   // Footer totals
   const footSlice = filtered.slice(0, 200);
   const footTotal = footSlice.reduce((s, i) => s + getDisplayTotal(i), 0);
-  const footPaid  = footSlice.reduce((s, i) => s + (i.amountPaid ?? getDisplayTotal(i)), 0);
+  // Admin's "Paid" footer shows the real cash received (original pre-scale amount)
+  const footPaid  = footSlice.reduce((s, i) => s + ((i._gstOriginalAmountPaid ?? i.amountPaid) ?? getDisplayTotal(i)), 0);
   const foot      = $('#bills-foot');
   if (filtered.length) {
     $('#bills-foot-total').textContent = fmtMoney(footTotal);
@@ -192,7 +193,7 @@ async function _exportBillsCSV() {
           inv.customerName || '', inv.customerPhone || '', inv.customerGst || '',
           l.shortCode || '', l.name, l.qty, l.price, lineTotal,
           originalTotal, filedTotal,
-          inv.amountPaid ?? '', inv.notes || '',
+          (inv._gstOriginalAmountPaid ?? inv.amountPaid) ?? '', inv.notes || '',
         ]);
       } else {
         rows.push([
