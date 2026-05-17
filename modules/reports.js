@@ -158,19 +158,51 @@ async function _showBillPreview(id, which) {
 }
 
 async function _exportBillsCSV() {
+  const isAdmin = state.currentUser === 'user2';
   const invoices = await db.all('invoices');
   const from     = $('#rep-date-from').value;
   const to       = $('#rep-date-to').value;
+  // Apply the SAME filters that the visible table uses
   let list = invoices;
   if (from) list = list.filter(i => (i.date || '').slice(0, 10) >= from);
   if (to)   list = list.filter(i => (i.date || '').slice(0, 10) <= to);
+  if (state.repCustFilter === 'gst')    list = list.filter(i => i.customerGst);
+  if (state.repCustFilter === 'walkin') list = list.filter(i => !i.customerGst);
 
-  const rows = [['Invoice', 'Date', 'Customer', 'CustomerPhone', 'CustomerGST', 'ItemCode', 'ItemName', 'Qty', 'Price', 'LineTotal', 'InvoiceTotal', 'AdjustedTotal', 'AmountPaid', 'Notes']];
+  // Column set differs by role:
+  //   accounts (user1) → filed values only (what they see on screen)
+  //   admin (user2)    → original (pre-scale) + filed values + Amount Paid
+  const header = isAdmin
+    ? ['Invoice', 'Date', 'Customer', 'CustomerPhone', 'CustomerGST', 'ItemCode', 'ItemName', 'Qty', 'Price', 'LineTotal', 'OriginalTotal', 'FiledTotal', 'AmountPaid', 'Notes']
+    : ['Invoice', 'Date', 'Customer', 'CustomerPhone', 'CustomerGST', 'ItemCode', 'ItemName', 'Qty', 'Price', 'LineTotal', 'InvoiceTotal', 'Notes'];
+  const rows = [header];
+
   for (const inv of list) {
-    const date          = (inv.date || '').slice(0, 10);
-    const reportedTotal = inv.adjustedTotal ?? inv.total;
-    for (const l of inv.items || []) {
-      rows.push([inv.invoiceNo, date, inv.customerName || '', inv.customerPhone || '', inv.customerGst || '', l.shortCode || '', l.name, l.qty, l.price, l.qty * l.price, inv.total, reportedTotal, inv.amountPaid ?? '', inv.notes || '']);
+    const date = (inv.date || '').slice(0, 10);
+    // Admin sees the ORIGINAL items (pre-scale); accounts sees the FILED items
+    const items = isAdmin && inv._gstOriginalItems ? inv._gstOriginalItems : (inv.items || []);
+    const originalTotal = getActualTotal(inv);
+    const filedTotal    = inv.total || 0;
+
+    for (const l of items) {
+      const lineTotal = (l.qty || 0) * (l.price || 0);
+      if (isAdmin) {
+        rows.push([
+          inv.invoiceNo, date,
+          inv.customerName || '', inv.customerPhone || '', inv.customerGst || '',
+          l.shortCode || '', l.name, l.qty, l.price, lineTotal,
+          originalTotal, filedTotal,
+          inv.amountPaid ?? '', inv.notes || '',
+        ]);
+      } else {
+        rows.push([
+          inv.invoiceNo, date,
+          inv.customerName || '', inv.customerPhone || '', inv.customerGst || '',
+          l.shortCode || '', l.name, l.qty, l.price, lineTotal,
+          filedTotal,
+          inv.notes || '',
+        ]);
+      }
     }
   }
   const csv = rows.map(r => r.map(c => {
