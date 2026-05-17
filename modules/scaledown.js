@@ -2,6 +2,7 @@
 import { db } from '../db.js';
 import {
   state, $, fmtMoney, escapeHTML, toast, openModal, downloadBlob,
+  migrateScaledAmountPaid,
 } from './core.js';
 import { renderReports } from './reports.js';
 
@@ -57,6 +58,10 @@ export async function applyVoidBills() {
   const target = parseFloat($('#void-target').value);
   if (!month)                       return toast('Select a month first', 'error');
   if (isNaN(target) || target < 0)  return toast('Enter a valid target amount', 'error');
+
+  // Make sure any legacy scaled bills have their amountPaid normalised
+  // before we re-scale (idempotent — no-op once migrated).
+  await migrateScaledAmountPaid();
 
   const invoices      = await db.all('invoices');
   const monthInv      = invoices.filter(i => (i.date || '').slice(0, 7) === month);
@@ -171,6 +176,7 @@ export async function applyVoidBills() {
 export async function restoreVoidBills() {
   const month = $('#void-month').value;
   if (!month) return;
+  await migrateScaledAmountPaid();
   const invoices = await db.all('invoices');
   const monthInv = invoices.filter(i => (i.date || '').slice(0, 7) === month);
   for (const inv of monthInv) {
