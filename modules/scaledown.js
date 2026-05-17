@@ -88,8 +88,9 @@ export async function applyVoidBills() {
 
     let remaining = reductionNeeded;
 
-    // Pass 1: remove whole line items (cheapest lines first)
-    // A line is removed entirely (qty→0); bills must keep ≥1 line item
+    // Pass 1: remove whole line items at RANDOM (Fisher–Yates shuffle).
+    // A line is removed entirely (qty→0); each bill must keep ≥1 line item.
+    // Random order avoids any pattern (no "cheapest first" or "largest first" bias).
     const allLines = [];
     for (const inv of adjustableInv) {
       for (const item of billItems.get(inv.id)) {
@@ -97,7 +98,6 @@ export async function applyVoidBills() {
         allLines.push({ invId: inv.id, item, lineTotal: (item.price || 0) * (item.qty || 0) });
       }
     }
-    // Shuffle so no predictable pattern (looks like natural variation)
     for (let i = allLines.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [allLines[i], allLines[j]] = [allLines[j], allLines[i]];
@@ -105,15 +105,15 @@ export async function applyVoidBills() {
 
     for (const { invId, item, lineTotal } of allLines) {
       if (remaining <= 0) break;
-      if (lineTotal > remaining) continue;
+      if (lineTotal > remaining) continue; // don't overshoot below target
       if (billItemCount.get(invId) <= 1) continue; // only item left — keep it
       item.qty = 0;
       remaining -= lineTotal;
       billItemCount.set(invId, billItemCount.get(invId) - 1);
     }
 
-    // Pass 2: reduce quantities unit by unit (cheapest units first)
-    // Each bill must keep ≥1 item with qty≥1
+    // Pass 2: reduce quantities one unit at a time, in RANDOM order.
+    // Each bill must keep ≥1 item with qty≥1.
     if (remaining > 0) {
       const allUnits = [];
       for (const inv of adjustableInv) {

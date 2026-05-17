@@ -25,6 +25,10 @@ export const DEFAULT_SETTINGS = {
   user1Pass: '1234',
   user2Name: 'admin',
   user2Pass: 'admin123',
+  costCodeAlphabet: '',   // 10-char string: char at index i = letter for digit i
+  securityBirthplace: '', // answer to "What is your birth place?"
+  securityQuestion:   '', // user-defined recovery question
+  securityAnswer:     '', // answer to the user-defined question
 };
 
 // ---- State ----
@@ -154,6 +158,30 @@ export function downloadBlob(blob, name) {
   a.href = url; a.download = name;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// ---- Cost Code helpers ----
+// alphabet: 10-char string where char at index i = letter for digit i
+// e.g. 'baxxxxxxxxxx' → digit 0 = 'b', digit 1 = 'a'
+export function encodeCostCode(amount) {
+  const alpha = (state.settings.costCodeAlphabet || '').toLowerCase();
+  if (alpha.length < 10 || amount == null || isNaN(amount)) return '';
+  return String(Math.round(amount))
+    .split('')
+    .map(d => alpha[parseInt(d, 10)] || d)
+    .join('');
+}
+
+export function decodeCostCode(code) {
+  const alpha = (state.settings.costCodeAlphabet || '').toLowerCase();
+  if (alpha.length < 10 || !code) return null;
+  let digits = '';
+  for (const ch of code.toLowerCase()) {
+    const idx = alpha.indexOf(ch);
+    if (idx < 0) return null; // unknown letter
+    digits += idx;
+  }
+  return digits ? parseInt(digits, 10) : null;
 }
 
 // ---- Toast ----

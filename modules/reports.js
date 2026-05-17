@@ -2,7 +2,7 @@
 import { db } from '../db.js';
 import {
   state, $, $$, fmtMoney, todayISO, escapeHTML, toast,
-  downloadBlob, registerTabRenderer,
+  downloadBlob, registerTabRenderer, openModal, closeModal,
 } from './core.js';
 import { renderBillToPrintArea } from './billing.js';
 
@@ -65,10 +65,13 @@ export async function renderReports() {
         : '';
       const reportedTotal = getDisplayTotal(i);
       const adjBadge      = (i._gstOriginalItems && state.currentUser === 'user2')
-        ? ` <span class="text-xs bg-orange-100 text-orange-700 px-1 rounded" title="Filed: ${fmtMoney(i.total)}">adj</span>`
+        ? ` <button class="text-xs bg-orange-100 text-orange-700 px-1 rounded hover:bg-orange-200 cursor-pointer" data-view-adj="${i.id}" title="View adjusted (filed) bill">adj</button>`
         : '';
+      const invoiceCell   = isAdmin
+        ? `<button class="mono text-blue-600 hover:underline text-left" data-view-orig="${i.id}">${escapeHTML(i.invoiceNo)}</button>`
+        : `<span class="mono">${escapeHTML(i.invoiceNo)}</span>`;
       return `<tr>
-        <td class="mono">${escapeHTML(i.invoiceNo)}</td>
+        <td>${invoiceCell}</td>
         <td class="text-xs">${d.toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' })}</td>
         <td>${escapeHTML(i.customerName || '')}${gstBadge}</td>
         <td class="text-right">${itemCount}</td>
@@ -78,6 +81,8 @@ export async function renderReports() {
       </tr>`;
     }).join('');
     body.querySelectorAll('[data-reprint]').forEach(b => b.addEventListener('click', () => _reprintInvoice(+b.dataset.reprint)));
+    body.querySelectorAll('[data-view-orig]').forEach(b => b.addEventListener('click', () => _showBillPreview(+b.dataset.viewOrig, 'original')));
+    body.querySelectorAll('[data-view-adj]').forEach(b => b.addEventListener('click', () => _showBillPreview(+b.dataset.viewAdj, 'adjusted')));
   }
 
   // Footer totals
@@ -125,6 +130,33 @@ async function _reprintInvoice(id) {
   window.print();
 }
 
+async function _showBillPreview(id, which) {
+  const inv = await db.get('invoices', id);
+  if (!inv) return;
+
+  // Build display invoice based on which view is requested
+  const displayInv = { ...inv };
+  if (which === 'original' && inv._gstOriginalItems) {
+    // Show items before scale-down (actual items sold)
+    displayInv.items      = inv._gstOriginalItems;
+    displayInv.total      = inv._gstOriginalItems.reduce((s, l) => s + (l.price || 0) * (l.qty || 0), 0);
+    displayInv.amountPaid = inv._gstOriginalAmountPaid ?? displayInv.total;
+  }
+  // 'adjusted' uses inv.items as-is (post scale-down)
+
+  renderBillToPrintArea(displayInv);
+
+  // Copy rendered print-area HTML into the preview modal
+  const printArea = document.getElementById('print-area');
+  document.getElementById('bill-view-content').innerHTML = printArea.innerHTML;
+  document.getElementById('bill-view-title').textContent =
+    which === 'original'
+      ? `Original Bill — ${inv.invoiceNo}`
+      : `Adjusted (Filed) Bill — ${inv.invoiceNo}`;
+
+  openModal('modal-bill-view');
+}
+
 async function _exportBillsCSV() {
   const invoices = await db.all('invoices');
   const from     = $('#rep-date-from').value;
@@ -151,6 +183,9 @@ async function _exportBillsCSV() {
 
 // ---- Wire ----
 export function wireReports() {
+  // Bill preview modal print button
+  document.getElementById('bill-view-print').addEventListener('click', () => window.print());
+
   $('#btn-rep-filter').addEventListener('click', renderReports);
   $('#btn-rep-today').addEventListener('click', () => {
     $('#rep-date-from').value = todayISO();

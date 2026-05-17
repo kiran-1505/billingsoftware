@@ -2,7 +2,7 @@
 import {
   state, $, fmtMoney, todayISO, escapeHTML, toast,
   openModal, canonicalCategory, debounce, makeQRPayload,
-  downloadBlob, registerTabRenderer,
+  downloadBlob, registerTabRenderer, encodeCostCode,
 } from './core.js';
 
 function _labelsList() {
@@ -72,6 +72,9 @@ async function _renderLabelsToPrintArea(ids) {
     } catch {}
     let qrImg = '';
     try { qrImg = await QRCode.toDataURL(makeQRPayload(p), { width: 220, margin: 1 }); } catch {}
+    const cc = p.costCode && (state.settings.costCodeAlphabet || '').length === 10
+      ? p.costCode.toUpperCase()
+      : '';
     return `
       <div class="label-card">
         <div class="name">${escapeHTML(p.name)}</div>
@@ -80,6 +83,7 @@ async function _renderLabelsToPrintArea(ids) {
           ${qrImg ? `<img src="${qrImg}" alt="qr" style="height:72px;width:72px;"/>` : ''}
         </div>
         <div class="shortcode">${escapeHTML(p.shortCode)}</div>
+        ${cc ? `<div class="shortcode" style="font-size:9px;letter-spacing:1px">${escapeHTML(cc)}</div>` : ''}
         <div class="mrp">MRP ${fmtMoney(p.sellingPrice)}</div>
       </div>`;
   }));
@@ -91,6 +95,9 @@ export async function showSingleLabel(productId) {
   if (!p) return;
   const box = $('#label-preview');
   box.dataset.productId = productId;
+  const cc = p.costCode && (state.settings.costCodeAlphabet || '').length === 10
+    ? p.costCode.toUpperCase()
+    : '';
   box.innerHTML = `
     <div class="label-card" style="min-width:220px">
       <div class="name">${escapeHTML(p.name)}</div>
@@ -99,6 +106,7 @@ export async function showSingleLabel(productId) {
         <canvas id="lbl-qr" width="90" height="90"></canvas>
       </div>
       <div class="shortcode">${escapeHTML(p.shortCode)}</div>
+      ${cc ? `<div class="shortcode" style="font-size:9px;letter-spacing:1px">${escapeHTML(cc)}</div>` : ''}
       <div class="mrp">MRP ${fmtMoney(p.sellingPrice)}</div>
     </div>`;
   openModal('modal-label');

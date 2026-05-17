@@ -394,28 +394,69 @@ textarea:focus {
 /* ── Print ───────────────────────────────────────────── */
 .print-area { display: none; }
 
+/* GST invoice styles — usable in both print AND the bill preview modal */
+.print-gst-invoice {
+  width: 100%; max-width: 200mm; margin: 0 auto;
+  font-family: "Times New Roman", Times, serif;
+  font-size: 10pt; color: #000;
+}
+.print-gst-invoice .gst-top {
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-size: 10pt; margin-bottom: 3px;
+}
+.print-gst-invoice .italic { font-style: italic; }
+.print-gst-invoice table { border-collapse: collapse; width: 100%; }
+.print-gst-invoice .gst-grid { border: 1px solid #000; }
+.print-gst-invoice .gst-grid td {
+  border: 1px solid #000; padding: 4px 6px; vertical-align: top; line-height: 1.35;
+}
+.print-gst-invoice .seller { width: 50%; }
+.print-gst-invoice .seller-flex { display: flex; gap: 8px; align-items: flex-start; }
+.print-gst-invoice .seller-logo {
+  width: 38px; height: 38px; border: 1.5px solid #000;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: bold; font-size: 13pt; flex-shrink: 0; font-family: sans-serif;
+}
+.print-gst-invoice .seller-info { flex: 1; }
+.print-gst-invoice .meta-cell { width: 25%; }
+.print-gst-invoice .meta-cell small { color: #555; font-size: 8.5pt; }
+.print-gst-invoice .buyer { padding: 6px 8px; }
+.print-gst-invoice .gst-items { border: 1px solid #000; border-top: none; }
+.print-gst-invoice .gst-items th,
+.print-gst-invoice .gst-items td {
+  border: 1px solid #000; padding: 3px 5px; vertical-align: top; font-size: 9.5pt;
+}
+.print-gst-invoice .gst-items th { font-weight: bold; text-align: center; font-size: 9pt; }
+.print-gst-invoice .gst-items .r { text-align: right; }
+.print-gst-invoice .gst-items .c { text-align: center; }
+.print-gst-invoice .gst-items .spacer td { border-top: none; border-bottom: none; height: 12px; }
+.print-gst-invoice .gst-items .totals td { border-top: 1px solid #000; font-weight: bold; }
+.print-gst-invoice .gst-eoe { text-align: right; font-size: 8pt; margin: 2px 0 4px; }
+.print-gst-invoice .gst-amount-words {
+  border: 1px solid #000; padding: 4px 6px; margin-top: 2px; font-size: 9.5pt;
+}
+.print-gst-invoice .gst-gw-box {
+  border: 1.5px dashed #c00; color: #c00;
+  text-align: center; font-weight: bold;
+  padding: 6px 4px; margin: 6px auto; max-width: 60%;
+  letter-spacing: 1px; font-size: 11pt; line-height: 1.5;
+}
+.print-gst-invoice .gst-gw-box.has-gw { border-color: #000; color: #000; }
+.print-gst-invoice .gst-footer { border: 1px solid #000; margin-top: 6px; }
+.print-gst-invoice .gst-footer td {
+  border: 1px solid #000; padding: 6px 8px; vertical-align: top; width: 50%;
+}
+.print-gst-invoice .gst-footer .declaration { font-size: 9pt; line-height: 1.4; }
+.print-gst-invoice .gst-footer .signatory {
+  text-align: right; font-size: 9.5pt; vertical-align: bottom;
+}
+.print-gst-invoice .gst-bottom { text-align: center; font-size: 8.5pt; margin-top: 4px; }
+
 @media print {
   @page { margin: 8mm; }
   body { background: #fff !important; }
   body > *:not(.print-area) { display: none !important; }
   .print-area { display: block !important; }
-
-  .print-receipt {
-    width: 72mm; margin: 0;
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 11px; color: #000;
-  }
-  .print-receipt h1 { font-size: 14px; margin: 0 0 2px; text-align: center; }
-  .print-receipt .meta { text-align: center; margin-bottom: 6px; font-size: 10px; }
-  .print-receipt table { width: 100%; border-collapse: collapse; }
-  .print-receipt th, .print-receipt td {
-    padding: 2px 0; text-align: left;
-    border-bottom: 1px dashed #000; vertical-align: top;
-  }
-  .print-receipt th:last-child, .print-receipt td:last-child { text-align: right; }
-  .print-receipt .totals { margin-top: 6px; border-top: 1px solid #000; padding-top: 4px; }
-  .print-receipt .totals .row { display: flex; justify-content: space-between; }
-  .print-receipt .footer { text-align: center; margin-top: 8px; font-size: 10px; }
 
   .print-labels {
     display: grid;

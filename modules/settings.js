@@ -3,8 +3,10 @@ import { db } from '../db.js';
 import {
   state, $, DEFAULT_SETTINGS, DEFAULT_CATEGORIES, nowISO, todayISO, toast,
   refreshCategories, refreshProducts, refreshDrafts, migrateLegacyProductCategories,
-  populateCategorySelects, downloadBlob, registerTabRenderer,
+  populateCategorySelects, downloadBlob, registerTabRenderer, openModal, closeModal,
+  switchTab,
 } from './core.js';
+import { applyUserState } from './auth.js';
 
 export function applySettingsToForm() {
   const s = state.settings;
@@ -19,10 +21,94 @@ export function applySettingsToForm() {
   $('#set-user1-pass').value = s.user1Pass || '';
   $('#set-user2-name').value = s.user2Name || 'admin';
   $('#set-user2-pass').value = s.user2Pass || '';
+  if ($('#set-security-birthplace')) $('#set-security-birthplace').value = s.securityBirthplace || '';
+  if ($('#set-security-question'))   $('#set-security-question').value   = s.securityQuestion   || '';
+  if ($('#set-security-answer'))     $('#set-security-answer').value     = s.securityAnswer     || '';
+  _updateCostCodeStatus();
+}
+
+async function _saveSecurityQuestions() {
+  const s = state.settings;
+  s.securityBirthplace = $('#set-security-birthplace').value.trim();
+  s.securityQuestion   = $('#set-security-question').value.trim();
+  s.securityAnswer     = $('#set-security-answer').value.trim();
+  await db.setSetting('securityBirthplace', s.securityBirthplace);
+  await db.setSetting('securityQuestion',   s.securityQuestion);
+  await db.setSetting('securityAnswer',     s.securityAnswer);
+  toast('Recovery questions saved', 'success');
+}
+
+function _updateCostCodeStatus() {
+  const alpha = state.settings.costCodeAlphabet || '';
+  const statusEl = $('#cost-code-status');
+  if (statusEl) {
+    statusEl.textContent = alpha.length === 10
+      ? `Active: ${alpha.toUpperCase()}`
+      : 'Not configured';
+  }
+}
+
+function _openCostCodeModal() {
+  const alpha = (state.settings.costCodeAlphabet || '          ').padEnd(10, ' ');
+  for (let i = 0; i < 10; i++) {
+    const inp = $(`#cc-digit-${i}`);
+    if (inp) inp.value = alpha[i].trim();
+  }
+  $('#cc-error').classList.add('hidden');
+  openModal('modal-cost-code');
+  setTimeout(() => $('#cc-digit-0')?.focus(), 50);
+}
+
+async function _saveCostCode() {
+  const letters = [];
+  for (let i = 0; i < 10; i++) {
+    const val = ($(`#cc-digit-${i}`)?.value || '').trim().toLowerCase();
+    if (!val || !/^[a-z]$/.test(val)) {
+      const errEl = $('#cc-error');
+      errEl.textContent = `Digit ${i} must be a single letter (a–z).`;
+      errEl.classList.remove('hidden');
+      return;
+    }
+    letters.push(val);
+  }
+  // Check uniqueness
+  if (new Set(letters).size < 10) {
+    const errEl = $('#cc-error');
+    errEl.textContent = 'All 10 letters must be unique.';
+    errEl.classList.remove('hidden');
+    return;
+  }
+  const alpha = letters.join('');
+  state.settings.costCodeAlphabet = alpha;
+  await db.setSetting('costCodeAlphabet', alpha);
+  closeModal('modal-cost-code');
+  _updateCostCodeStatus();
+  toast('Cost code saved', 'success');
 }
 
 async function _saveSettings() {
   const s = state.settings;
+
+  // Detect credential changes BEFORE applying — so we can confirm with the user
+  const u1Name = $('#set-user1-name').value.trim();
+  const u1Pass = $('#set-user1-pass').value;
+  const u2Name = $('#set-user2-name').value.trim();
+  const u2Pass = $('#set-user2-pass').value;
+  // Detect any change in either username (including clearing it) or any password edit
+  const userChanged =
+    u1Name !== (s.user1Name || '') ||
+    u2Name !== (s.user2Name || '') ||
+    !!u1Pass ||
+    !!u2Pass;
+
+  if (userChanged) {
+    const ok = confirm(
+      'Are you sure you want to change the username and/or password?\n\n' +
+      'You will be logged out and must log in again with the new credentials.'
+    );
+    if (!ok) return;
+  }
+
   s.shopName      = $('#set-shop-name').value.trim() || 'Shop';
   s.address       = $('#set-address').value.trim();
   s.phone         = $('#set-phone').value.trim();
@@ -30,16 +116,22 @@ async function _saveSettings() {
   s.invoicePrefix = $('#set-inv-prefix').value.trim() || 'INV-';
   s.nextInvoiceNo = Math.max(1, parseInt($('#set-inv-next').value || '1', 10));
   s.footer        = $('#set-footer').value.trim();
-  const u1Name = $('#set-user1-name').value.trim();
-  const u1Pass = $('#set-user1-pass').value;
-  const u2Name = $('#set-user2-name').value.trim();
-  const u2Pass = $('#set-user2-pass').value;
   if (u1Name) s.user1Name = u1Name;
   if (u1Pass) s.user1Pass = u1Pass;
   if (u2Name) s.user2Name = u2Name;
   if (u2Pass) s.user2Pass = u2Pass;
   for (const [k, v] of Object.entries(s)) await db.setSetting(k, v);
   toast('Settings saved', 'success');
+
+  if (userChanged) {
+    // Clear password fields and log the user out
+    $('#set-user1-pass').value = '';
+    $('#set-user2-pass').value = '';
+    state.currentUser = null;
+    applyUserState();
+    switchTab('billing');
+    toast('Logged out — please log in with the new credentials', 'success');
+  }
 }
 
 export async function exportBackup() {
@@ -97,9 +189,24 @@ async function _resetAllData() {
 // ---- Wire ----
 export function wireSettings() {
   $('#btn-save-settings').addEventListener('click', _saveSettings);
+  $('#btn-save-users')?.addEventListener('click', _saveSettings);
+  $('#btn-save-security')?.addEventListener('click', _saveSecurityQuestions);
   $('#btn-export').addEventListener('click', exportBackup);
   $('#import-file').addEventListener('change', _importBackup);
   $('#btn-reset').addEventListener('click', _resetAllData);
+  $('#btn-cost-code-setup').addEventListener('click', _openCostCodeModal);
+  $('#btn-save-cost-code').addEventListener('click', _saveCostCode);
+
+  // Auto-advance inputs in cost code modal
+  for (let i = 0; i < 10; i++) {
+    const inp = $(`#cc-digit-${i}`);
+    if (inp) {
+      inp.addEventListener('input', () => {
+        inp.value = inp.value.slice(-1).toLowerCase(); // keep only last char
+        if (inp.value && i < 9) $(`#cc-digit-${i + 1}`)?.focus();
+      });
+    }
+  }
 
   registerTabRenderer('settings', applySettingsToForm);
 }

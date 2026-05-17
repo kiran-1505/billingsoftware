@@ -4,10 +4,12 @@ import {
   state, $, $$, fmtMoney, fmtInt, nowISO, escapeHTML, toast,
   openModal, closeModal, canonicalCategory, debounce, compressImage,
   refreshCategories, refreshProducts, populateCategorySelects, registerTabRenderer,
-  LEGACY_CAT_CODE,
+  LEGACY_CAT_CODE, decodeCostCode, encodeCostCode,
 } from './core.js';
 
 let _productModalImage = null;
+let _prodViewMode = 'list'; // 'list' | 'card'
+let _catViewMode  = 'card'; // 'card' | 'list'
 
 // ---- Product counts helper (also used by billing's sell pane via state) ----
 export function productCountsByCategory() {
@@ -21,15 +23,27 @@ export function productCountsByCategory() {
 }
 
 // ---- Category view ----
-export function renderProductsCategoryView() {
-  $('#products-list-view').classList.add('hidden');
-  $('#products-cat-view').classList.remove('hidden');
+function _onCatClick(catName) {
+  state.currentProductsCategory = catName;
+  $('#products-list-title').textContent = catName;
+  $('#products-cat-view').classList.add('hidden');
+  $('#products-list-view').classList.remove('hidden');
+  $('#product-search').value = '';
+  renderProductsList();
+  setTimeout(() => $('#product-search').focus(), 30);
+}
+
+function _catFilteredList() {
   const q      = $('#products-cat-search').value.trim().toLowerCase();
   const counts = productCountsByCategory();
-  const cats   = state.categories
+  return state.categories
     .map(c => ({ ...c, count: counts[c.name] || 0 }))
     .filter(c => !q || c.name.toLowerCase().includes(q));
-  const grid = $('#products-cat-grid');
+}
+
+function _renderCategoryCardView() {
+  const cats = _catFilteredList();
+  const grid  = $('#products-cat-grid');
   if (!cats.length) {
     grid.innerHTML = `<div class="col-span-full text-center py-8 text-gray-400">No categories. Click "+ New Category" to add one.</div>`;
     return;
@@ -37,21 +51,49 @@ export function renderProductsCategoryView() {
   grid.innerHTML = cats.map(c => `
     <button class="cat-card text-left" data-cat="${escapeHTML(c.name)}">
       ${c.image
-        ? `<img src="${escapeHTML(c.image)}" class="w-full h-20 object-cover rounded mb-2" />`
-        : `<div class="w-full h-20 rounded mb-2 bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-3xl">${escapeHTML(c.name.slice(0, 2).toUpperCase())}</div>`}
+        ? `<img src="${escapeHTML(c.image)}" class="w-full h-24 object-cover rounded mb-2" />`
+        : `<div class="w-full h-24 rounded mb-2 bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-3xl">${escapeHTML(c.name.slice(0, 2).toUpperCase())}</div>`}
       <div class="font-semibold text-gray-800 truncate">${escapeHTML(c.name)}</div>
       <div class="text-xs text-gray-500 mt-1">${fmtInt(c.count)} ${c.count === 1 ? 'item' : 'items'}</div>
     </button>
   `).join('');
-  grid.querySelectorAll('[data-cat]').forEach(b => b.addEventListener('click', () => {
-    state.currentProductsCategory = b.dataset.cat;
-    $('#products-list-title').textContent = b.dataset.cat;
-    $('#products-cat-view').classList.add('hidden');
-    $('#products-list-view').classList.remove('hidden');
-    $('#product-search').value = '';
-    renderProductsList();
-    setTimeout(() => $('#product-search').focus(), 30);
-  }));
+  grid.querySelectorAll('[data-cat]').forEach(b => b.addEventListener('click', () => _onCatClick(b.dataset.cat)));
+}
+
+function _renderCategoryListView() {
+  const cats = _catFilteredList();
+  const list  = $('#products-cat-list');
+  if (!cats.length) {
+    list.innerHTML = `<div class="p-4 text-center text-gray-400">No categories.</div>`;
+    return;
+  }
+  list.innerHTML = cats.map(c => `
+    <button class="w-full flex items-center gap-3 p-3 hover:bg-gray-50 text-left border-b last:border-0" data-cat="${escapeHTML(c.name)}">
+      ${c.image
+        ? `<img src="${escapeHTML(c.image)}" class="w-20 h-14 object-cover rounded flex-shrink-0" />`
+        : `<div class="w-20 h-14 rounded bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-2xl flex-shrink-0">${escapeHTML(c.name.slice(0, 2).toUpperCase())}</div>`}
+      <div class="flex-1 min-w-0">
+        <div class="font-semibold text-gray-800 truncate">${escapeHTML(c.name)}</div>
+        <div class="text-xs text-gray-500">${fmtInt(c.count)} ${c.count === 1 ? 'item' : 'items'}</div>
+      </div>
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="flex-shrink-0 text-gray-400"><polyline points="9 18 15 12 9 6"/></svg>
+    </button>
+  `).join('');
+  list.querySelectorAll('[data-cat]').forEach(b => b.addEventListener('click', () => _onCatClick(b.dataset.cat)));
+}
+
+export function renderProductsCategoryView() {
+  $('#products-list-view').classList.add('hidden');
+  $('#products-cat-view').classList.remove('hidden');
+  if (_catViewMode === 'list') {
+    $('#products-cat-grid').classList.add('hidden');
+    $('#products-cat-list').classList.remove('hidden');
+    _renderCategoryListView();
+  } else {
+    $('#products-cat-grid').classList.remove('hidden');
+    $('#products-cat-list').classList.add('hidden');
+    _renderCategoryCardView();
+  }
 }
 
 function _productsFilteredForList() {
@@ -65,6 +107,9 @@ function _productsFilteredForList() {
 
 export function renderProductsList() {
   const list = _productsFilteredForList();
+  $('#product-count').textContent = `${list.length} of ${state.products.length} products`;
+
+  // --- Table (list) view ---
   const body = $('#products-body');
   if (!list.length) {
     body.innerHTML = `<tr><td colspan="7" class="text-center py-8 text-gray-400">No products in this category yet. Click "+ Add Product".</td></tr>`;
@@ -88,13 +133,96 @@ export function renderProductsList() {
           <button class="text-red-600 text-sm hover:underline" data-del="${p.id}">Del</button>
         </td>
       </tr>`).join('');
+    body.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () => openProductModal(+b.dataset.edit)));
+    body.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => _deleteProduct(+b.dataset.del)));
+    body.querySelectorAll('[data-label]').forEach(b => b.addEventListener('click', () => {
+      document.dispatchEvent(new CustomEvent('toolbill:show-label', { detail: +b.dataset.label }));
+    }));
   }
-  $('#product-count').textContent = `${list.length} of ${state.products.length} products`;
-  body.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () => openProductModal(+b.dataset.edit)));
-  body.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => _deleteProduct(+b.dataset.del)));
-  body.querySelectorAll('[data-label]').forEach(b => b.addEventListener('click', () => {
+
+  // --- Card view ---
+  if (_prodViewMode === 'card') _renderProductsCardView(list);
+}
+
+function _renderProductsCardView(list) {
+  list = list || _productsFilteredForList();
+  const container = $('#products-card-container');
+  if (!list.length) {
+    container.innerHTML = `<div class="col-span-full text-center py-8 text-gray-400">No products in this category yet. Click "+ Add Product".</div>`;
+    return;
+  }
+  container.innerHTML = list.map(p => {
+    const initials   = (p.name || '??').slice(0, 2).toUpperCase();
+    const stockClass = p.stockQty <= (p.reorderLevel || 0) ? 'text-red-600 font-bold' : 'text-gray-600';
+    return `
+      <div class="relative bg-white border rounded-lg overflow-hidden shadow-sm flex flex-col">
+        ${p.image
+          ? `<img src="${escapeHTML(p.image)}" class="w-full h-28 object-cover flex-shrink-0" />`
+          : `<div class="w-full h-28 bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-3xl flex-shrink-0">${escapeHTML(initials)}</div>`
+        }
+        <!-- 3-dot kebab menu -->
+        <button class="absolute top-1.5 right-1.5 w-7 h-7 bg-white bg-opacity-90 rounded-full flex items-center justify-center text-gray-600 hover:bg-gray-100 shadow text-base leading-none font-bold" data-prod-menu="${p.id}">&#8942;</button>
+        <div id="prod-menu-${p.id}" class="hidden absolute top-9 right-1 bg-white border border-gray-200 rounded-lg shadow-lg z-10 w-36 text-sm overflow-hidden">
+          <button class="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center gap-2" data-edit="${p.id}">
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Edit
+          </button>
+          <button class="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center gap-2" data-label="${p.id}">
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>Label
+          </button>
+          <label class="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center gap-2 cursor-pointer">
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>Change photo
+            <input type="file" accept="image/*" class="hidden" data-card-img="${p.id}" />
+          </label>
+          <button class="w-full text-left px-3 py-2 hover:bg-red-50 text-red-600 flex items-center gap-2" data-del="${p.id}">
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>Delete
+          </button>
+        </div>
+        <div class="p-2 flex flex-col flex-1">
+          <div class="font-semibold text-gray-800 text-sm leading-tight" title="${escapeHTML(p.name)}">${escapeHTML(p.name)}</div>
+          <div class="text-xs text-gray-500 truncate mt-0.5">${escapeHTML(canonicalCategory(p.category))}</div>
+          <div class="mt-auto pt-1.5 flex items-center justify-between">
+            <span class="font-bold text-gray-800">${fmtMoney(p.sellingPrice)}</span>
+            <span class="text-xs ${stockClass}">Qty: ${fmtInt(p.stockQty)}</span>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+
+  // Wire 3-dot menu toggle
+  container.querySelectorAll('[data-prod-menu]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const id   = btn.dataset.prodMenu;
+      const menu = document.getElementById(`prod-menu-${id}`);
+      const wasHidden = menu.classList.contains('hidden');
+      // Close all menus first
+      container.querySelectorAll('[id^="prod-menu-"]').forEach(m => m.classList.add('hidden'));
+      if (wasHidden) menu.classList.remove('hidden');
+    });
+  });
+
+  // Edit / Label / Delete actions
+  container.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () => openProductModal(+b.dataset.edit)));
+  container.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => _deleteProduct(+b.dataset.del)));
+  container.querySelectorAll('[data-label]').forEach(b => b.addEventListener('click', () => {
     document.dispatchEvent(new CustomEvent('toolbill:show-label', { detail: +b.dataset.label }));
   }));
+
+  // Change photo
+  container.querySelectorAll('[data-card-img]').forEach(input => {
+    input.addEventListener('change', async () => {
+      if (!input.files[0]) return;
+      const id = +input.dataset.cardImg;
+      const p  = state.products.find(x => x.id === id);
+      if (!p) return;
+      p.image     = await compressImage(input.files[0]);
+      p.updatedAt = nowISO();
+      await db.put('products', p);
+      await refreshProducts();
+      _renderProductsCardView();
+      toast('Photo updated', 'success');
+    });
+  });
 }
 
 // ---- Product modal ----
@@ -110,6 +238,16 @@ export function openProductModal(id) {
   $('#pm-stock').value     = editing?.stockQty ?? 0;
   $('#pm-reorder').value   = editing?.reorderLevel ?? 5;
   $('#pm-hsn').value       = editing?.hsn || '';
+  // CGST/SGST: prefer explicit fields, else split legacy gstRate in half, else default 9/9
+  const editCgst = editing?.cgstRate != null ? editing.cgstRate
+                 : editing?.gstRate  != null ? editing.gstRate / 2
+                 : 9;
+  const editSgst = editing?.sgstRate != null ? editing.sgstRate
+                 : editing?.gstRate  != null ? editing.gstRate / 2
+                 : 9;
+  $('#pm-cgst-rate').value = String(editCgst);
+  $('#pm-sgst-rate').value = String(editSgst);
+  _updateGstTotalLabel();
   $('#pm-shortcode').value = editing?.shortCode || '';
   $('#pm-save').dataset.editingId = editing?.id || '';
 
@@ -128,6 +266,12 @@ export function openProductModal(id) {
     _productModalImage = null;
     _setProductModalImagePreview(null);
   }, { once: true });
+
+  // Cost code field — always visible so user can enter codes anytime
+  const ccWrap = $('#pm-costcode-wrap');
+  if (ccWrap) ccWrap.style.display = '';
+  const ccInput = $('#pm-costcode');
+  if (ccInput) ccInput.value = editing?.costCode || '';
 
   if (!editing) _updatePendingShortCode();
   openModal('modal-product');
@@ -155,6 +299,13 @@ async function _updatePendingShortCode() {
   $('#pm-shortcode').value = await db.nextShortCode();
 }
 
+function _updateGstTotalLabel() {
+  const c = parseFloat($('#pm-cgst-rate')?.value) || 0;
+  const s = parseFloat($('#pm-sgst-rate')?.value) || 0;
+  const el = $('#pm-gst-total');
+  if (el) el.textContent = (c + s).toFixed(2);
+}
+
 async function _saveProductFromModal() {
   const name      = $('#pm-name').value.trim();
   const category  = $('#pm-category').value;
@@ -163,6 +314,10 @@ async function _saveProductFromModal() {
   const stock     = parseInt($('#pm-stock').value || '0', 10);
   const reorder   = parseInt($('#pm-reorder').value || '0', 10);
   const hsn       = $('#pm-hsn').value.trim();
+  const cgstRate  = parseFloat($('#pm-cgst-rate').value) || 0;
+  const sgstRate  = parseFloat($('#pm-sgst-rate').value) || 0;
+  const gstRate   = cgstRate + sgstRate; // back-compat field
+  const costCode  = ($('#pm-costcode')?.value || '').trim().toLowerCase() || null;
   const editingId = $('#pm-save').dataset.editingId;
 
   if (!name)         return toast('Name required', 'error');
@@ -174,7 +329,9 @@ async function _saveProductFromModal() {
       const p = await db.get('products', +editingId);
       p.name = name; p.category = category; p.unit = unit;
       p.sellingPrice = price; p.reorderLevel = reorder; p.hsn = hsn;
-      p.image = _productModalImage; p.updatedAt = nowISO();
+      p.gstRate = gstRate; p.cgstRate = cgstRate; p.sgstRate = sgstRate;
+      p.image = _productModalImage; p.costCode = costCode;
+      p.updatedAt = nowISO();
       if (stock !== p.stockQty) {
         await db.add('stockMovements', {
           productId: p.id, type: 'adjust', qty: stock - p.stockQty,
@@ -189,7 +346,7 @@ async function _saveProductFromModal() {
       const prod = {
         shortCode, name, category, unit,
         sellingPrice: price, stockQty: stock, reorderLevel: reorder, hsn,
-        image: _productModalImage, gstRate: 18,
+        image: _productModalImage, costCode, gstRate, cgstRate, sgstRate,
         createdAt: nowISO(), updatedAt: nowISO(),
       };
       const newId = await db.add('products', prod);
@@ -408,6 +565,16 @@ async function _addCategoryFromInput() {
   toast(`Added "${name}"`, 'success');
 }
 
+// ---- View-toggle helpers ----
+function _setCatViewButtons() {
+  $('#btn-cat-card-view').className = `px-3 py-1.5 text-sm ${_catViewMode === 'card' ? 'bg-gray-800 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`;
+  $('#btn-cat-list-view').className = `px-3 py-1.5 text-sm ${_catViewMode === 'list' ? 'bg-gray-800 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`;
+}
+function _setProdViewButtons() {
+  $('#btn-prod-list-view').className = `px-3 py-1.5 text-sm ${_prodViewMode === 'list' ? 'bg-gray-800 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`;
+  $('#btn-prod-card-view').className = `px-3 py-1.5 text-sm ${_prodViewMode === 'card' ? 'bg-gray-800 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`;
+}
+
 // ---- Wire ----
 export function wireProducts() {
   $('#products-cat-search').addEventListener('input', debounce(renderProductsCategoryView, 100));
@@ -416,6 +583,8 @@ export function wireProducts() {
   $('#btn-add-product-2').addEventListener('click', () => openProductModal(null));
   $('#btn-bulk-add').addEventListener('click', _openBulkModal);
   $('#pm-save').addEventListener('click', _saveProductFromModal);
+  $('#pm-cgst-rate').addEventListener('input', _updateGstTotalLabel);
+  $('#pm-sgst-rate').addEventListener('input', _updateGstTotalLabel);
   $('#bulk-parse').addEventListener('click', _parseBulk);
   $('#bulk-save').addEventListener('click', _saveBulk);
   $('#product-search').addEventListener('input', debounce(renderProductsList, 100));
@@ -424,6 +593,38 @@ export function wireProducts() {
     $('#products-list-view').classList.add('hidden');
     $('#products-cat-view').classList.remove('hidden');
     renderProductsCategoryView();
+  });
+
+  // Category card/list toggle
+  $('#btn-cat-card-view').addEventListener('click', () => {
+    _catViewMode = 'card';
+    _setCatViewButtons();
+    renderProductsCategoryView();
+  });
+  $('#btn-cat-list-view').addEventListener('click', () => {
+    _catViewMode = 'list';
+    _setCatViewButtons();
+    renderProductsCategoryView();
+  });
+
+  // Product list/card toggle
+  $('#btn-prod-list-view').addEventListener('click', () => {
+    _prodViewMode = 'list';
+    _setProdViewButtons();
+    $('#products-list-container').classList.remove('hidden');
+    $('#products-card-container').classList.add('hidden');
+  });
+  $('#btn-prod-card-view').addEventListener('click', () => {
+    _prodViewMode = 'card';
+    _setProdViewButtons();
+    $('#products-list-container').classList.add('hidden');
+    $('#products-card-container').classList.remove('hidden');
+    _renderProductsCardView();
+  });
+
+  // Close product 3-dot menus on outside click
+  document.addEventListener('click', () => {
+    document.querySelectorAll('[id^="prod-menu-"]').forEach(m => m.classList.add('hidden'));
   });
 
   document.addEventListener('toolbill:data-restored', renderProductsCategoryView);

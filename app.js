@@ -67,7 +67,7 @@ async function init() {
     if (e.key === 'F2') {
       e.preventDefault();
       switchTab('billing');
-      document.querySelector('#bill-search')?.focus();
+      document.querySelector('#sell-pane-search')?.focus();
     }
     if (e.key === 'F9') {
       e.preventDefault();
