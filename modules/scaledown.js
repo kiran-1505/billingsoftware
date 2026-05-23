@@ -106,14 +106,33 @@ export async function renderVoidBillsList() {
   _updateScaleFormula();
 }
 
-// Live formula below the target input: GST + scaled-down walk-in = target
+// Always-visible formula below the target input.
+// - No target typed → shows the CURRENT state (last scaled / unscaled):
+//     GST ₹X + Walk-in ₹Y = ₹X+Y
+//   so the user sees what the bills already add up to.
+// - Target typed (valid)  → shows the PROSPECTIVE state:
+//     GST ₹X + Walk-in ₹(target - X) = ₹target
+// - Target below GST floor → red warning.
 function _updateScaleFormula() {
   const el = $('#void-formula');
   if (!el) return;
-  const target = parseFloat($('#void-target').value);
-  if (isNaN(target) || target < 0) {
-    el.textContent = '';
+  const raw = ($('#void-target').value || '').trim();
+  const target = raw === '' ? NaN : parseFloat(raw);
+  const fmt = (gst, walkin, total, prospective) =>
+    `<span class="text-gray-500 text-xs">${prospective ? 'After scale-down:' : 'Current totals:'}</span><br/>
+     <span class="text-green-700">GST ${fmtMoney(gst)}</span>
+     + <span class="text-blue-700">Walk-in ${fmtMoney(walkin)}</span>
+     = <strong>${fmtMoney(total)}</strong>`;
+
+  if (raw === '') {
+    // No target typed — show what the bills currently total
+    const current = _gstTotalInRange + _walkinTotalInRange;
     el.classList.remove('text-red-600');
+    el.innerHTML = fmt(_gstTotalInRange, _walkinTotalInRange, current, false);
+    return;
+  }
+  if (isNaN(target) || target < 0) {
+    el.innerHTML = `<span class="text-red-600 font-semibold">Enter a valid target amount.</span>`;
     return;
   }
   if (target < _gstTotalInRange) {
@@ -122,9 +141,7 @@ function _updateScaleFormula() {
   }
   const scaledWalkin = target - _gstTotalInRange;
   el.classList.remove('text-red-600');
-  el.innerHTML = `<span class="text-green-700">GST ${fmtMoney(_gstTotalInRange)}</span>
-    + <span class="text-blue-700">Walk-in ${fmtMoney(scaledWalkin)}</span>
-    = <strong>${fmtMoney(target)}</strong>`;
+  el.innerHTML = fmt(_gstTotalInRange, scaledWalkin, target, true);
 }
 
 export async function applyVoidBills() {
