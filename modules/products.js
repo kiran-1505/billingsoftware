@@ -318,6 +318,67 @@ async function _addNewCategoryFromMiniForm() {
   toast(`Added "${name}"`, 'success');
 }
 
+// ---- Custom category dropdown for the product modal ----
+let _catDdActive = -1;
+
+function _renderCategoryDropdown() {
+  const dd = $('#pm-category-dropdown');
+  if (!dd) return;
+  const q = ($('#pm-category').value || '').trim().toLowerCase();
+  const matches = state.categories.filter(c => !q || c.name.toLowerCase().includes(q));
+  if (!matches.length) {
+    dd.innerHTML = `<div class="px-3 py-2 text-gray-400">No matches — use "+ New" to create</div>`;
+    dd.classList.remove('hidden');
+    _catDdActive = -1;
+    return;
+  }
+  if (_catDdActive >= matches.length) _catDdActive = matches.length - 1;
+  dd.innerHTML = matches.map((c, idx) => `
+    <div class="cat-dd-item flex items-center gap-2 px-3 py-2 cursor-pointer ${idx === _catDdActive ? 'bg-blue-100' : 'hover:bg-gray-100'}" data-cat-name="${escapeHTML(c.name)}">
+      ${c.image
+        ? `<img src="${escapeHTML(c.image)}" class="w-6 h-6 object-cover rounded flex-shrink-0" />`
+        : `<div class="w-6 h-6 rounded bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-[10px] flex-shrink-0">${escapeHTML(c.name.slice(0, 2).toUpperCase())}</div>`}
+      <span>${escapeHTML(c.name)}</span>
+    </div>
+  `).join('');
+  dd.classList.remove('hidden');
+
+  dd.querySelectorAll('[data-cat-name]').forEach(el => {
+    el.addEventListener('mousedown', (e) => {
+      e.preventDefault(); // keep focus so blur doesn't close before click registers
+      $('#pm-category').value = el.dataset.catName;
+      _closeCategoryDropdown();
+    });
+  });
+}
+
+function _closeCategoryDropdown() {
+  const dd = $('#pm-category-dropdown');
+  if (dd) dd.classList.add('hidden');
+  _catDdActive = -1;
+}
+
+function _handleCategoryKey(e) {
+  const dd = $('#pm-category-dropdown');
+  if (!dd || dd.classList.contains('hidden')) return;
+  const items = Array.from(dd.querySelectorAll('[data-cat-name]'));
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    _catDdActive = Math.min(items.length - 1, _catDdActive + 1);
+    _renderCategoryDropdown();
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    _catDdActive = Math.max(0, _catDdActive - 1);
+    _renderCategoryDropdown();
+  } else if (e.key === 'Enter' && _catDdActive >= 0 && items[_catDdActive]) {
+    e.preventDefault();
+    $('#pm-category').value = items[_catDdActive].dataset.catName;
+    _closeCategoryDropdown();
+  } else if (e.key === 'Escape') {
+    _closeCategoryDropdown();
+  }
+}
+
 function _setProductModalImagePreview(src) {
   const preview     = $('#pm-img-preview');
   const placeholder = $('#pm-img-placeholder');
@@ -641,6 +702,15 @@ export function wireProducts() {
   $('#pm-save').addEventListener('click', _saveProductFromModal);
   $('#pm-cgst-rate').addEventListener('input', _updateGstTotalLabel);
   $('#pm-sgst-rate').addEventListener('input', _updateGstTotalLabel);
+
+  // Custom category dropdown wiring
+  const catInput = $('#pm-category');
+  if (catInput) {
+    catInput.addEventListener('focus', _renderCategoryDropdown);
+    catInput.addEventListener('input', () => { _catDdActive = -1; _renderCategoryDropdown(); });
+    catInput.addEventListener('keydown', _handleCategoryKey);
+    catInput.addEventListener('blur', () => setTimeout(_closeCategoryDropdown, 150));
+  }
 
   // Inline "+ New category" mini form inside the product modal
   $('#pm-new-cat-btn')?.addEventListener('click', () => {

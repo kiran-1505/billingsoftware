@@ -607,9 +607,11 @@
         <div>
           <label class="block text-xs text-gray-600 mb-1">Category *</label>
           <div class="flex gap-1">
-            <input id="pm-category" type="text" list="pm-category-list" autocomplete="off"
-              class="flex-1 p-2 border rounded" placeholder="Type to search or pick…" />
-            <datalist id="pm-category-list"></datalist>
+            <div class="flex-1 relative">
+              <input id="pm-category" type="text" autocomplete="off"
+                class="w-full p-2 border rounded" placeholder="Type to search or pick…" />
+              <div id="pm-category-dropdown" class="hidden absolute left-0 right-0 z-40 mt-1 bg-white border border-gray-300 rounded shadow-lg max-h-56 overflow-y-auto text-sm"></div>
+            </div>
             <button type="button" id="pm-new-cat-btn" class="px-2 bg-gray-100 hover:bg-gray-200 border rounded text-sm" title="Add new category with photo">+ New</button>
           </div>
           <div id="pm-new-cat-row" class="hidden mt-2 p-2 border rounded bg-blue-50 flex items-center gap-2">

@@ -322,13 +322,12 @@ export async function migrateLegacyProductCategories() {
 }
 
 export function populateCategorySelects() {
+  // Product modal uses a custom dropdown that reads from state.categories
+  // directly (see products.js — no element to populate here).
+  // Labels tab — filter dropdown stays a select
   const optHTML = state.categories.map(c =>
     `<option value="${escapeHTML(c.name)}">${escapeHTML(c.name)}</option>`
   ).join('');
-  // Product modal — typeable input backed by a <datalist>
-  const pmList = $('#pm-category-list');
-  if (pmList) pmList.innerHTML = optHTML;
-  // Labels tab — filter dropdown stays a select
   const filterHTML = `<option value="">All</option>` + optHTML;
   const lbl = $('#labels-category');
   if (lbl) lbl.innerHTML = filterHTML;
