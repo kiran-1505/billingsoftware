@@ -348,7 +348,23 @@ function _updateGstTotalLabel() {
 
 async function _saveProductFromModal() {
   const name      = $('#pm-name').value.trim();
-  const category  = $('#pm-category').value;
+  const typedCat  = $('#pm-category').value.trim();
+  // Case-insensitive match against existing categories; auto-create if brand new
+  let category = '';
+  if (typedCat) {
+    const match = state.categories.find(c => c.name.toLowerCase() === typedCat.toLowerCase());
+    if (match) {
+      category = match.name;
+    } else {
+      // Brand-new category typed in directly — auto-create (no image)
+      await db.add('categories', { name: typedCat, createdAt: nowISO() });
+      await refreshCategories();
+      populateCategorySelects();
+      document.dispatchEvent(new CustomEvent('toolbill:categories-changed'));
+      category = typedCat;
+      toast(`Created category "${typedCat}"`, 'success');
+    }
+  }
   const unit      = $('#pm-unit').value;
   const price     = parseFloat($('#pm-price').value);
   const stock     = parseInt($('#pm-stock').value || '0', 10);

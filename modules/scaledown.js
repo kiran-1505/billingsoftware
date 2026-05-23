@@ -45,23 +45,38 @@ export async function openVoidBillsModal() {
   openModal('modal-void-bills');
 }
 
+// Cached so the target-input formula can read it without re-querying the DB
+let _gstTotalInRange    = 0;
+let _walkinTotalInRange = 0;
+
 export async function renderVoidBillsList() {
   const { from, to } = _readRange();
   const body  = $('#void-bills-list');
-  if (!from && !to) { body.innerHTML = `<div class="p-3 text-gray-400 text-center text-xs">Pick a date range</div>`; return; }
+  if (!from && !to) {
+    body.innerHTML = `<div class="p-3 text-gray-400 text-center text-xs">Pick a date range</div>`;
+    _gstTotalInRange = 0; _walkinTotalInRange = 0;
+    _updateScaleFormula();
+    return;
+  }
 
   const invoices = await db.all('invoices');
-  const inRange  = invoices
-    .filter(i => _inRange(i, from, to) && !isGstInvoice(i))
+  const rangeAll = invoices.filter(i => _inRange(i, from, to));
+  const gstBills = rangeAll.filter(isGstInvoice);
+  const walkin   = rangeAll
+    .filter(i => !isGstInvoice(i))
     .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
 
-  if (!inRange.length) {
+  _gstTotalInRange    = gstBills.reduce((s, i) => s + (i.total || 0), 0);
+  _walkinTotalInRange = walkin.reduce((s, i) => s + (i.total || 0), 0);
+
+  if (!walkin.length && !gstBills.length) {
     body.innerHTML = `<div class="p-3 text-gray-400 text-center text-xs">No bills in this range</div>`;
+    _updateScaleFormula();
     return;
   }
 
   const isAdmin = state.currentUser === 'user2';
-  const rows = inRange.map(i => {
+  const rows = walkin.map(i => {
     const d        = new Date(i.date);
     const modified = isAdmin && !!i._gstOriginalItems;
     const origTotal = modified
@@ -79,10 +94,37 @@ export async function renderVoidBillsList() {
     </div>`;
   }).join('');
 
-  const total = inRange.reduce((s, i) => s + (i.total || 0), 0);
-  body.innerHTML = rows + `<div class="flex justify-between px-3 py-2 bg-gray-50 font-semibold text-sm">
-    <span>Total (${inRange.length} bill${inRange.length === 1 ? '' : 's'})</span><span>${fmtMoney(total)}</span>
+  const totalRow = `<div class="flex justify-between px-3 py-2 bg-gray-50 font-semibold text-sm border-t">
+    <span>Total (${walkin.length} bill${walkin.length === 1 ? '' : 's'})</span><span>${fmtMoney(_walkinTotalInRange)}</span>
   </div>`;
+  // GST Total row sits directly below Total, as requested
+  const gstRow = `<div class="flex justify-between px-3 py-2 bg-green-50 font-semibold text-sm text-green-800">
+    <span>GST Total (${gstBills.length} bill${gstBills.length === 1 ? '' : 's'})</span><span>${fmtMoney(_gstTotalInRange)}</span>
+  </div>`;
+
+  body.innerHTML = (walkin.length ? rows : '') + totalRow + gstRow;
+  _updateScaleFormula();
+}
+
+// Live formula below the target input: GST + scaled-down walk-in = target
+function _updateScaleFormula() {
+  const el = $('#void-formula');
+  if (!el) return;
+  const target = parseFloat($('#void-target').value);
+  if (isNaN(target) || target < 0) {
+    el.textContent = '';
+    el.classList.remove('text-red-600');
+    return;
+  }
+  if (target < _gstTotalInRange) {
+    el.innerHTML = `<span class="text-red-600 font-semibold">Target ${fmtMoney(target)} is below GST total ${fmtMoney(_gstTotalInRange)} — not allowed.</span>`;
+    return;
+  }
+  const scaledWalkin = target - _gstTotalInRange;
+  el.classList.remove('text-red-600');
+  el.innerHTML = `<span class="text-green-700">GST ${fmtMoney(_gstTotalInRange)}</span>
+    + <span class="text-blue-700">Walk-in ${fmtMoney(scaledWalkin)}</span>
+    = <strong>${fmtMoney(target)}</strong>`;
 }
 
 export async function applyVoidBills() {
@@ -319,6 +361,7 @@ export function wireVoidBills() {
   $('#btn-void-enter').addEventListener('click', applyVoidBills);
   $('#btn-void-restore').addEventListener('click', restoreVoidBills);
   $('#btn-void-pdf').addEventListener('click', downloadVoidBillsPDF);
+  $('#void-target').addEventListener('input', _updateScaleFormula);
 
   // Quick range buttons
   $('#btn-void-quick-month')?.addEventListener('click', () => {

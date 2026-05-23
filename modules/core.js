@@ -325,8 +325,10 @@ export function populateCategorySelects() {
   const optHTML = state.categories.map(c =>
     `<option value="${escapeHTML(c.name)}">${escapeHTML(c.name)}</option>`
   ).join('');
-  const pmCat = $('#pm-category');
-  if (pmCat) pmCat.innerHTML = optHTML || `<option value="General">General</option>`;
+  // Product modal — typeable input backed by a <datalist>
+  const pmList = $('#pm-category-list');
+  if (pmList) pmList.innerHTML = optHTML;
+  // Labels tab — filter dropdown stays a select
   const filterHTML = `<option value="">All</option>` + optHTML;
   const lbl = $('#labels-category');
   if (lbl) lbl.innerHTML = filterHTML;

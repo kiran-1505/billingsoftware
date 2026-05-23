@@ -607,8 +607,10 @@
         <div>
           <label class="block text-xs text-gray-600 mb-1">Category *</label>
           <div class="flex gap-1">
-            <select id="pm-category" class="flex-1 p-2 border rounded"></select>
-            <button type="button" id="pm-new-cat-btn" class="px-2 bg-gray-100 hover:bg-gray-200 border rounded text-sm" title="Add new category">+ New</button>
+            <input id="pm-category" type="text" list="pm-category-list" autocomplete="off"
+              class="flex-1 p-2 border rounded" placeholder="Type to search or pick…" />
+            <datalist id="pm-category-list"></datalist>
+            <button type="button" id="pm-new-cat-btn" class="px-2 bg-gray-100 hover:bg-gray-200 border rounded text-sm" title="Add new category with photo">+ New</button>
           </div>
           <div id="pm-new-cat-row" class="hidden mt-2 p-2 border rounded bg-blue-50 flex items-center gap-2">
             <label class="cursor-pointer flex-shrink-0" title="Upload image (optional)">
@@ -827,6 +829,7 @@ Spanner Set 10pc	Hand Tools	650	set	5	2"></textarea>
         <button id="btn-void-enter" class="bg-gray-800 text-white px-6 py-2 rounded">Enter</button>
         <button id="btn-void-pdf" class="bg-gray-600 text-white px-4 py-2 rounded">PDF</button>
       </div>
+      <div id="void-formula" class="mt-2 text-sm text-gray-600 min-h-[20px]"></div>
       <div class="mt-2 flex justify-end">
         <button id="btn-void-restore" class="text-xs text-gray-300 hover:text-gray-500">Restore</button>
       </div>
