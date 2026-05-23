@@ -66,85 +66,56 @@
             <button id="btn-clear-cart" class="ml-auto text-sm text-red-600 hover:underline">Clear</button>
           </div>
 
-          <!-- Customer details + G&W toggles (directly under Current Bill) -->
+          <!-- Customer details + warranty toggles (directly under Current Bill) -->
           <div class="p-3 border-b bg-gray-50 space-y-2">
-            <div class="flex items-center gap-2">
+            <div class="flex items-center gap-2 flex-wrap">
               <span class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Customer</span>
-              <div class="ml-auto flex items-center gap-4">
-                <!-- No G&W toggle -->
+              <div class="ml-auto flex items-center gap-4 flex-wrap">
+                <!-- No G/W/R toggle -->
                 <label class="flex items-center gap-1.5 cursor-pointer select-none text-xs">
-                  <span class="text-gray-600 font-medium">No G&amp;W</span>
+                  <span class="text-gray-600 font-medium">No G/W/R</span>
                   <div class="relative inline-flex flex-shrink-0">
                     <input type="checkbox" id="toggle-no-gw" class="sr-only peer" />
                     <div class="w-9 h-5 bg-gray-200 rounded-full peer-checked:bg-blue-500 transition-colors"></div>
                     <div class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform peer-checked:translate-x-4 pointer-events-none"></div>
                   </div>
                 </label>
-                <!-- G&W toggle -->
+                <!-- Warranty toggle -->
                 <label class="flex items-center gap-1.5 cursor-pointer select-none text-xs">
-                  <span class="text-gray-600 font-medium">G&amp;W</span>
+                  <span class="text-gray-600 font-medium">Warranty</span>
                   <div class="relative inline-flex flex-shrink-0">
                     <input type="checkbox" id="toggle-gw" class="sr-only peer" />
                     <div class="w-9 h-5 bg-gray-200 rounded-full peer-checked:bg-green-500 transition-colors"></div>
                     <div class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform peer-checked:translate-x-4 pointer-events-none"></div>
                   </div>
                 </label>
+                <!-- Armature/motor warranty toggle -->
+                <label class="flex items-center gap-1.5 cursor-pointer select-none text-xs">
+                  <span class="text-gray-600 font-medium">Armature W</span>
+                  <div class="relative inline-flex flex-shrink-0">
+                    <input type="checkbox" id="toggle-armature" class="sr-only peer" />
+                    <div class="w-9 h-5 bg-gray-200 rounded-full peer-checked:bg-purple-500 transition-colors"></div>
+                    <div class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform peer-checked:translate-x-4 pointer-events-none"></div>
+                  </div>
+                </label>
               </div>
             </div>
 
-            <!-- G&W duration fields (visible when G&W toggle is on) -->
-            <div id="gw-fields" class="hidden grid grid-cols-2 gap-2">
-              <input id="gw-guarantee" type="number" min="0" class="p-2 border rounded text-sm" placeholder="Guarantee (months)" />
-              <input id="gw-warranty"  type="number" min="0" class="p-2 border rounded text-sm" placeholder="Warranty (months)" />
-            </div>
+            <!-- Warranty (months) field — visible when Warranty toggle is on -->
+            <input id="gw-warranty" type="number" min="0" class="hidden w-full p-2 border rounded text-sm" placeholder="Warranty (months)" />
+
+            <!-- Armature/motor warranty (months) field — visible when Armature toggle is on -->
+            <input id="armature-months" type="number" min="0" class="hidden w-full p-2 border rounded text-sm" placeholder="Warranty on Armature/Motor only (months)" />
 
             <!-- Customer fields -->
             <div class="grid grid-cols-2 gap-2">
               <input id="customer-name"  type="text" class="p-2 border rounded" placeholder="Customer name (optional)" />
               <input id="customer-phone" type="tel"  class="p-2 border rounded" placeholder="Phone (optional)" />
             </div>
-            <div class="grid grid-cols-2 gap-2">
-              <input id="customer-gst" type="text" autocomplete="off"
-                class="p-2 border-2 border-gray-200 rounded font-mono focus:outline-none transition-colors"
-                placeholder="GST number"
-                style="text-transform:uppercase" />
-              <select id="customer-state" class="p-2 border rounded text-sm">
-                <option value="">— Select State —</option>
-                <option value="01">Jammu and Kashmir</option>
-                <option value="02">Himachal Pradesh</option>
-                <option value="03">Punjab</option>
-                <option value="04">Chandigarh</option>
-                <option value="05">Uttarakhand</option>
-                <option value="06">Haryana</option>
-                <option value="07">Delhi</option>
-                <option value="08">Rajasthan</option>
-                <option value="09">Uttar Pradesh</option>
-                <option value="10">Bihar</option>
-                <option value="11">Sikkim</option>
-                <option value="12">Arunachal Pradesh</option>
-                <option value="13">Nagaland</option>
-                <option value="14">Manipur</option>
-                <option value="15">Mizoram</option>
-                <option value="16">Tripura</option>
-                <option value="17">Meghalaya</option>
-                <option value="18">Assam</option>
-                <option value="19">West Bengal</option>
-                <option value="20">Jharkhand</option>
-                <option value="21">Odisha</option>
-                <option value="22">Chhattisgarh</option>
-                <option value="23">Madhya Pradesh</option>
-                <option value="24">Gujarat</option>
-                <option value="27">Maharashtra</option>
-                <option value="29">Karnataka</option>
-                <option value="30">Goa</option>
-                <option value="32">Kerala</option>
-                <option value="33">Tamil Nadu</option>
-                <option value="34">Puducherry</option>
-                <option value="36">Telangana</option>
-                <option value="37">Andhra Pradesh</option>
-                <option value="38">Ladakh</option>
-              </select>
-            </div>
+            <input id="customer-gst" type="text" autocomplete="off"
+              class="w-full p-2 border-2 border-gray-200 rounded font-mono focus:outline-none transition-colors"
+              placeholder="GST number"
+              style="text-transform:uppercase" />
           </div>
 
           <div class="sell-cart-scroll">

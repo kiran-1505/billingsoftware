@@ -144,9 +144,6 @@ function fillCustomer(c) {
   $('#customer-name').value  = c.name  || '';
   $('#customer-phone').value = c.phone || '';
   $('#customer-gst').value   = c.gst   || '';
-  if ($('#customer-state')) {
-    $('#customer-state').value = c.stateCode || (c.gst ? c.gst.slice(0, 2) : '');
-  }
   // Update type from field
   const type = c.gst ? 'gst' : (c.type || 'walkin');
   setCustomerType(type);
@@ -516,7 +513,6 @@ export async function saveDraftFromCart() {
   const customerName  = $('#customer-name').value.trim();
   const customerPhone = $('#customer-phone').value.trim();
   const customerGst   = $('#customer-gst').value.trim().toUpperCase();
-  const customerStateCode = $('#customer-state')?.value || '';
   const amountPaidRaw = $('#amount-paid').value.trim();
   const amountPaid    = amountPaidRaw === '' ? null : parseFloat(amountPaidRaw);
   const notes = $('#bill-notes').value.trim();
@@ -524,7 +520,7 @@ export async function saveDraftFromCart() {
     date: nowISO(), items: state.cart.map(l => ({ ...l })),
     customerType: state.customerType,
     customerName: customerName || null, customerPhone: customerPhone || null,
-    customerGst: customerGst || null, customerStateCode: customerStateCode || null,
+    customerGst: customerGst || null,
     amountPaid, notes: notes || '',
   };
   try {
@@ -590,7 +586,6 @@ async function _loadDraft(id) {
   $('#customer-name').value  = d.customerName  || '';
   $('#customer-phone').value = d.customerPhone || '';
   $('#customer-gst').value   = d.customerGst   || '';
-  if ($('#customer-state')) $('#customer-state').value = d.customerStateCode || (d.customerGst ? d.customerGst.slice(0, 2) : '');
   $('#amount-paid').value    = d.amountPaid != null ? String(d.amountPaid) : '';
   $('#bill-notes').value     = d.notes || '';
   setActiveDraft(d.id, `#${d.id}`);
@@ -619,7 +614,6 @@ export async function saveAndPrintBill() {
   const total         = state.cart.reduce((sum, l) => sum + l.qty * l.price, 0);
   const customerName  = $('#customer-name').value.trim();
   const customerPhone = $('#customer-phone').value.trim();
-  const customerStateCode = $('#customer-state')?.value || '';
   const rawGst        = $('#customer-gst').value;
   const customerGst   = rawGst.trim().toUpperCase();
   const spaceCount    = (rawGst.match(/ /g) || []).length;
@@ -629,18 +623,18 @@ export async function saveAndPrintBill() {
   const amountPaid    = amountPaidRaw === '' ? null : parseFloat(amountPaidRaw);
   const notes         = $('#bill-notes').value.trim();
   const noGW          = $('#toggle-no-gw').checked || null;
-  const gwOn          = $('#toggle-gw').checked;
-  const guaranteeMonths = gwOn ? (parseInt($('#gw-guarantee').value) || null) : null;
-  const warrantyMonths  = gwOn ? (parseInt($('#gw-warranty').value)  || null) : null;
+  const warrantyMonths = $('#toggle-gw').checked
+    ? (parseInt($('#gw-warranty').value) || null) : null;
+  const armatureMonths = $('#toggle-armature')?.checked
+    ? (parseInt($('#armature-months').value) || null) : null;
   const invoice = {
     invoiceNo, date: nowISO(),
     customerType,
     customerName: customerName || null, customerPhone: customerPhone || null,
     customerGst: customerGst || null,
-    customerStateCode: customerStateCode || null,
     items: state.cart.map(l => ({ ...l })),
     subtotal: total, total, amountPaid,
-    noGW, guaranteeMonths, warrantyMonths,
+    noGW, warrantyMonths, armatureMonths,
     notes: notes || '', printedAt: nowISO(),
   };
   try {
@@ -672,19 +666,19 @@ export async function saveAndPrintBill() {
     $('#customer-name').value  = '';
     $('#customer-phone').value = '';
     $('#customer-gst').value   = '';
-    if ($('#customer-state')) $('#customer-state').value = '';
     $('#amount-paid').value    = '';
     $('#bill-notes').value     = '';
     $('#toggle-no-gw').checked = false;
     $('#toggle-gw').checked    = false;
-    $('#gw-fields').classList.add('hidden');
-    $('#gw-guarantee').value   = '';
     $('#gw-warranty').value    = '';
+    $('#gw-warranty').classList.add('hidden');
+    if ($('#toggle-armature')) $('#toggle-armature').checked = false;
+    if ($('#armature-months')) { $('#armature-months').value = ''; $('#armature-months').classList.add('hidden'); }
     renderCart();
     renderDrafts();
     renderSellPane();
     if (customerName || customerPhone || customerGst) {
-      await upsertCustomer(customerName, customerPhone, customerGst, customerType, customerStateCode);
+      await upsertCustomer(customerName, customerPhone, customerGst, customerType);
     }
     buildCustomerList();
     toast('Bill ' + invoiceNo + ' saved', 'success');
@@ -725,6 +719,7 @@ function _renderGSTInvoice(invoice, s) {
 
   const sellerState  = _stateFromGstin(s.gstin);
   // Use the manually-selected state if present, otherwise derive from buyer GSTIN
+  // Buyer state auto-derived from GSTIN (legacy customerStateCode override kept for old data)
   let buyerState = invoice.customerStateCode
     ? { code: invoice.customerStateCode, name: STATE_NAMES[invoice.customerStateCode] || '' }
     : _stateFromGstin(invoice.customerGst);
@@ -859,11 +854,24 @@ function _renderGSTInvoice(invoice, s) {
         ${amountInWords(finalTotal)}
       </div>
 
-      ${invoice.noGW ? '<div class="gst-gw-box no-gw">NO GUARANTEE &nbsp; NO WARRANTY</div>' : ''}
-      ${(invoice.guaranteeMonths || invoice.warrantyMonths) ? `
-        <div class="gst-gw-box has-gw">
-          ${invoice.guaranteeMonths ? `<div>GUARANTEE: ${invoice.guaranteeMonths} MONTH${invoice.guaranteeMonths > 1 ? 'S' : ''}</div>` : ''}
-          ${invoice.warrantyMonths ? `<div>WARRANTY: ${invoice.warrantyMonths} MONTH${invoice.warrantyMonths > 1 ? 'S' : ''}</div>` : ''}
+      ${invoice.noGW ? `
+        <div class="gst-seal">
+          <div>NO GUARANTEE</div>
+          <div>NO WARRANTY</div>
+          <div>NO RETURN</div>
+        </div>` : ''}
+      ${invoice.warrantyMonths ? `
+        <div class="gst-seal">
+          <div>WARRANTY: ${invoice.warrantyMonths} MONTH${invoice.warrantyMonths > 1 ? 'S' : ''}</div>
+        </div>` : ''}
+      ${invoice.armatureMonths ? `
+        <div class="gst-seal">
+          <div>${invoice.armatureMonths} MONTH${invoice.armatureMonths > 1 ? 'S' : ''}</div>
+          <div>WARRANTY ON ARMATURE/MOTOR ONLY</div>
+        </div>` : ''}
+      ${(invoice.guaranteeMonths) ? `
+        <div class="gst-seal">
+          <div>GUARANTEE: ${invoice.guaranteeMonths} MONTH${invoice.guaranteeMonths > 1 ? 'S' : ''}</div>
         </div>` : ''}
 
       <table class="gst-footer">
@@ -900,18 +908,14 @@ export function wireBilling() {
     const isGst = isGstFromField();
     setCustomerType(isGst ? 'gst' : 'walkin');
     state.customerType = isGst ? 'gst' : 'walkin';
-    // Auto-suggest buyer state from GSTIN prefix (only if state not already chosen)
-    const stateEl = $('#customer-state');
-    if (stateEl && !stateEl.value) {
-      const code = ($('#customer-gst').value || '').trim().slice(0, 2);
-      if (code && stateEl.querySelector(`option[value="${code}"]`)) {
-        stateEl.value = code;
-      }
-    }
   });
-  // G&W toggle shows/hides duration fields
+  // Warranty toggle shows/hides the months input
   $('#toggle-gw').addEventListener('change', () => {
-    $('#gw-fields').classList.toggle('hidden', !$('#toggle-gw').checked);
+    $('#gw-warranty').classList.toggle('hidden', !$('#toggle-gw').checked);
+  });
+  // Armature warranty toggle shows/hides the months input
+  $('#toggle-armature')?.addEventListener('change', () => {
+    $('#armature-months').classList.toggle('hidden', !$('#toggle-armature').checked);
   });
   $('#btn-clear-cart').addEventListener('click', () => {
     if (!state.cart.length) return;

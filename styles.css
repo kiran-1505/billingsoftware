@@ -435,13 +435,18 @@ textarea:focus {
 .print-gst-invoice .gst-amount-words {
   border: 1px solid #000; padding: 4px 6px; margin-top: 2px; font-size: 9.5pt;
 }
-.print-gst-invoice .gst-gw-box {
-  border: 1.5px dashed #c00; color: #c00;
-  text-align: center; font-weight: bold;
-  padding: 6px 4px; margin: 6px auto; max-width: 60%;
-  letter-spacing: 1px; font-size: 11pt; line-height: 1.5;
+/* Stamped "seal" look (e.g. NO GUARANTEE/WARRANTY/RETURN, WARRANTY: N MONTHS, etc.) */
+.print-gst-invoice .gst-seal {
+  display: inline-block;
+  border: 2px solid #000; color: #000;
+  text-align: center; font-weight: 900;
+  padding: 6px 14px; margin: 6px 4px;
+  letter-spacing: 1.5px; font-size: 11pt; line-height: 1.4;
+  font-family: "Arial Black", "Helvetica Neue", sans-serif;
 }
-.print-gst-invoice .gst-gw-box.has-gw { border-color: #000; color: #000; }
+.print-gst-invoice .gst-seal-row {
+  text-align: left; margin-top: 4px;
+}
 .print-gst-invoice .gst-footer { border: 1px solid #000; margin-top: 6px; }
 .print-gst-invoice .gst-footer td {
   border: 1px solid #000; padding: 6px 8px; vertical-align: top; width: 50%;
