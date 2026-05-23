@@ -3,6 +3,7 @@ import { db } from '../db.js';
 import {
   state, $, fmtMoney, fmtInt, todayISO, escapeHTML, debounce, registerTabRenderer,
 } from './core.js';
+import { getActualTotal } from './reports.js';
 
 export async function renderDaily() {
   const invoices = await db.all('invoices');
@@ -13,9 +14,12 @@ export async function renderDaily() {
     if (!byDay[day]) byDay[day] = { date: day, invoices: [], bills: 0, items: 0, total: 0, qty: 0 };
     byDay[day].invoices.push(inv);
     byDay[day].bills++;
-    byDay[day].total += (inv.adjustedTotal ?? inv.total) || 0;
-    byDay[day].items += (inv.items || []).length;
-    byDay[day].qty   += (inv.items || []).reduce((s, l) => s + (l.qty || 0), 0);
+    // Daily tab is admin-only — show the REAL (pre-scale) revenue
+    byDay[day].total += getActualTotal(inv);
+    // Items/qty also reflect the pre-scale snapshot if the bill was scaled down
+    const items = inv._gstOriginalItems || inv.items || [];
+    byDay[day].items += items.length;
+    byDay[day].qty   += items.reduce((s, l) => s + (l.qty || 0), 0);
   }
   const days = Object.values(byDay).sort((a, b) => b.date.localeCompare(a.date));
 
@@ -74,11 +78,13 @@ export async function renderDaily() {
 
   const lines = [];
   for (const inv of d.invoices) {
-    for (const l of (inv.items || [])) {
+    // Show ORIGINAL items (pre-scale) for admin daily view
+    const items = inv._gstOriginalItems || inv.items || [];
+    for (const l of items) {
       lines.push({
         time: inv.date, invoiceNo: inv.invoiceNo,
         customer: inv.customerName || '', customerGst: inv.customerGst || '',
-        adjusted: inv.adjustedTotal != null,
+        adjusted: !!inv._gstOriginalItems,
         name: l.name, qty: l.qty, price: l.price,
         total: (l.price || 0) * (l.qty || 0),
       });
