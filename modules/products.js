@@ -273,9 +273,49 @@ export function openProductModal(id) {
   const ccInput = $('#pm-costcode');
   if (ccInput) ccInput.value = editing?.costCode || '';
 
+  // Reset inline "+ New category" mini form each open
+  _resetNewCategoryMiniForm();
+
   if (!editing) _updatePendingShortCode();
   openModal('modal-product');
   setTimeout(() => $('#pm-name').focus(), 50);
+}
+
+// ---- Inline "+ New category" mini form inside product modal ----
+let _newCatImage = null;
+
+function _resetNewCategoryMiniForm() {
+  const row = $('#pm-new-cat-row');
+  if (!row) return;
+  row.classList.add('hidden');
+  $('#pm-new-cat-name').value = '';
+  _newCatImage = null;
+  const prev = $('#pm-new-cat-preview');
+  const ph   = $('#pm-new-cat-placeholder');
+  if (prev) { prev.style.display = 'none'; prev.src = ''; }
+  if (ph)   ph.style.display = '';
+  // Reset the file input so the same file can be re-picked
+  const img = $('#pm-new-cat-img');
+  if (img) img.value = '';
+}
+
+async function _addNewCategoryFromMiniForm() {
+  const name = $('#pm-new-cat-name').value.trim();
+  if (!name) return toast('Enter a category name', 'error');
+  if (state.categories.some(c => c.name.toLowerCase() === name.toLowerCase())) {
+    return toast('Category already exists', 'error');
+  }
+  await db.add('categories', {
+    name,
+    image: _newCatImage || null,
+    createdAt: nowISO(),
+  });
+  await refreshCategories();
+  populateCategorySelects();
+  $('#pm-category').value = name;
+  _resetNewCategoryMiniForm();
+  document.dispatchEvent(new CustomEvent('toolbill:categories-changed'));
+  toast(`Added "${name}"`, 'success');
 }
 
 function _setProductModalImagePreview(src) {
@@ -585,6 +625,25 @@ export function wireProducts() {
   $('#pm-save').addEventListener('click', _saveProductFromModal);
   $('#pm-cgst-rate').addEventListener('input', _updateGstTotalLabel);
   $('#pm-sgst-rate').addEventListener('input', _updateGstTotalLabel);
+
+  // Inline "+ New category" mini form inside the product modal
+  $('#pm-new-cat-btn')?.addEventListener('click', () => {
+    $('#pm-new-cat-row').classList.remove('hidden');
+    setTimeout(() => $('#pm-new-cat-name').focus(), 30);
+  });
+  $('#pm-new-cat-cancel')?.addEventListener('click', _resetNewCategoryMiniForm);
+  $('#pm-new-cat-add')?.addEventListener('click', _addNewCategoryFromMiniForm);
+  $('#pm-new-cat-name')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); _addNewCategoryFromMiniForm(); }
+  });
+  $('#pm-new-cat-img')?.addEventListener('change', async (e) => {
+    if (!e.target.files[0]) return;
+    _newCatImage = await compressImage(e.target.files[0]);
+    const prev = $('#pm-new-cat-preview');
+    const ph   = $('#pm-new-cat-placeholder');
+    if (prev) { prev.src = _newCatImage; prev.style.display = ''; }
+    if (ph)   ph.style.display = 'none';
+  });
   $('#bulk-parse').addEventListener('click', _parseBulk);
   $('#bulk-save').addEventListener('click', _saveBulk);
   $('#product-search').addEventListener('input', debounce(renderProductsList, 100));

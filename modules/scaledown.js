@@ -4,32 +4,64 @@ import {
   state, $, fmtMoney, escapeHTML, toast, openModal, downloadBlob,
   migrateScaledAmountPaid,
 } from './core.js';
-import { renderReports } from './reports.js';
+import { renderReports, isGstInvoice } from './reports.js';
+
+// ---- Date helpers ----
+function _todayISO() { return new Date().toISOString().slice(0, 10); }
+function _firstOfMonthISO(d = new Date()) {
+  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
+}
+function _lastOfMonthISO(d = new Date()) {
+  return new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().slice(0, 10);
+}
+function _prevMonth() {
+  const d = new Date();
+  d.setMonth(d.getMonth() - 1);
+  return { from: _firstOfMonthISO(d), to: _lastOfMonthISO(d) };
+}
+function _readRange() {
+  const from = $('#void-date-from').value;
+  const to   = $('#void-date-to').value;
+  return { from, to };
+}
+function _rangeLabel(from, to) {
+  if (!from && !to) return 'All time';
+  if (from && to && from === to) return from;
+  return `${from || '…'} → ${to || '…'}`;
+}
+function _inRange(inv, from, to) {
+  const d = (inv.date || '').slice(0, 10);
+  if (from && d < from) return false;
+  if (to   && d > to)   return false;
+  return true;
+}
 
 export async function openVoidBillsModal() {
-  $('#void-month').value  = new Date().toISOString().slice(0, 7);
-  $('#void-target').value = '';
+  // Default range = current month
+  $('#void-date-from').value = _firstOfMonthISO();
+  $('#void-date-to').value   = _lastOfMonthISO();
+  $('#void-target').value    = '';
   await renderVoidBillsList();
   openModal('modal-void-bills');
 }
 
 export async function renderVoidBillsList() {
-  const month = $('#void-month').value;
+  const { from, to } = _readRange();
   const body  = $('#void-bills-list');
-  if (!month) { body.innerHTML = ''; return; }
+  if (!from && !to) { body.innerHTML = `<div class="p-3 text-gray-400 text-center text-xs">Pick a date range</div>`; return; }
 
   const invoices = await db.all('invoices');
-  const monthInv = invoices
-    .filter(i => (i.date || '').slice(0, 7) === month && !i.customerGst)
+  const inRange  = invoices
+    .filter(i => _inRange(i, from, to) && !isGstInvoice(i))
     .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
 
-  if (!monthInv.length) {
-    body.innerHTML = `<div class="p-3 text-gray-400 text-center text-xs">No bills</div>`;
+  if (!inRange.length) {
+    body.innerHTML = `<div class="p-3 text-gray-400 text-center text-xs">No bills in this range</div>`;
     return;
   }
 
   const isAdmin = state.currentUser === 'user2';
-  const rows = monthInv.map(i => {
+  const rows = inRange.map(i => {
     const d        = new Date(i.date);
     const modified = isAdmin && !!i._gstOriginalItems;
     const origTotal = modified
@@ -47,33 +79,32 @@ export async function renderVoidBillsList() {
     </div>`;
   }).join('');
 
-  const total = monthInv.reduce((s, i) => s + (i.total || 0), 0);
+  const total = inRange.reduce((s, i) => s + (i.total || 0), 0);
   body.innerHTML = rows + `<div class="flex justify-between px-3 py-2 bg-gray-50 font-semibold text-sm">
-    <span>Total</span><span>${fmtMoney(total)}</span>
+    <span>Total (${inRange.length} bill${inRange.length === 1 ? '' : 's'})</span><span>${fmtMoney(total)}</span>
   </div>`;
 }
 
 export async function applyVoidBills() {
-  const month  = $('#void-month').value;
+  const { from, to } = _readRange();
   const target = parseFloat($('#void-target').value);
-  if (!month)                       return toast('Select a month first', 'error');
+  if (!from && !to)                 return toast('Select a date range first', 'error');
   if (isNaN(target) || target < 0)  return toast('Enter a valid target amount', 'error');
 
-  // Make sure any legacy scaled bills have their amountPaid normalised
-  // before we re-scale (idempotent — no-op once migrated).
+  // Normalise legacy scaled bills first (idempotent)
   await migrateScaledAmountPaid();
 
-  const invoices      = await db.all('invoices');
-  const monthInv      = invoices.filter(i => (i.date || '').slice(0, 7) === month);
-  const protectedInv  = monthInv.filter(i => i.customerGst);
-  const adjustableInv = monthInv.filter(i => !i.customerGst);
+  const invoices       = await db.all('invoices');
+  const rangeInv       = invoices.filter(i => _inRange(i, from, to));
+  const protectedInv   = rangeInv.filter(isGstInvoice);
+  const adjustableInv  = rangeInv.filter(i => !isGstInvoice(i));
 
-  if (!adjustableInv.length)   return toast('No walk-in bills found for this month', 'error');
+  if (!adjustableInv.length)   return toast('No walk-in bills found in this range', 'error');
 
-  const protectedTotal   = protectedInv.reduce((s, i) => s + (i.total || 0), 0);
-  const adjustableTotal  = adjustableInv.reduce((s, i) => s + (i.total || 0), 0);
+  const protectedTotal  = protectedInv.reduce((s, i) => s + (i.total || 0), 0);
+  const adjustableTotal = adjustableInv.reduce((s, i) => s + (i.total || 0), 0);
 
-  if (!adjustableTotal)       return toast('Walk-in bills have zero total', 'error');
+  if (!adjustableTotal)        return toast('Walk-in bills have zero total', 'error');
   if (target < protectedTotal) return toast(`Target cannot be less than GST customer total (${fmtMoney(protectedTotal)})`, 'error');
 
   const adjustableTarget = target - protectedTotal;
@@ -95,7 +126,6 @@ export async function applyVoidBills() {
 
     // Pass 1: remove whole line items at RANDOM (Fisher–Yates shuffle).
     // A line is removed entirely (qty→0); each bill must keep ≥1 line item.
-    // Random order avoids any pattern (no "cheapest first" or "largest first" bias).
     const allLines = [];
     for (const inv of adjustableInv) {
       for (const item of billItems.get(inv.id)) {
@@ -110,15 +140,14 @@ export async function applyVoidBills() {
 
     for (const { invId, item, lineTotal } of allLines) {
       if (remaining <= 0) break;
-      if (lineTotal > remaining) continue; // don't overshoot below target
-      if (billItemCount.get(invId) <= 1) continue; // only item left — keep it
+      if (lineTotal > remaining) continue;
+      if (billItemCount.get(invId) <= 1) continue;
       item.qty = 0;
       remaining -= lineTotal;
       billItemCount.set(invId, billItemCount.get(invId) - 1);
     }
 
     // Pass 2: reduce quantities one unit at a time, in RANDOM order.
-    // Each bill must keep ≥1 item with qty≥1.
     if (remaining > 0) {
       const allUnits = [];
       for (const inv of adjustableInv) {
@@ -138,25 +167,23 @@ export async function applyVoidBills() {
         if (remaining <= 0) break;
         if ((item.qty || 0) <= 0) continue;
         if (unitPrice > remaining) continue;
-        if (item.qty === 1 && billItemCount.get(invId) <= 1) continue; // last item — keep it
+        if (item.qty === 1 && billItemCount.get(invId) <= 1) continue;
         if (item.qty === 1) billItemCount.set(invId, billItemCount.get(invId) - 1);
         item.qty--;
         remaining -= unitPrice;
       }
     }
 
-
     for (const inv of adjustableInv) {
       const updatedItems = billItems.get(inv.id).filter(i => (i.qty || 0) > 0);
       const newTotal     = updatedItems.reduce((s, l) => s + (l.price || 0) * (l.qty || 0), 0);
       const unchanged    = newTotal === (inv.total || 0);
-      if (unchanged && !inv._gstOriginalItems) continue; // nothing changed, skip
+      if (unchanged && !inv._gstOriginalItems) continue;
       await db.put('invoices', {
         ...inv,
         items: updatedItems,
         subtotal: newTotal,
         total: newTotal,
-        // Filed amountPaid follows the filed total; original is preserved for admin/restore
         amountPaid: newTotal,
         _gstOriginalItems: inv._gstOriginalItems || origSnapshot.get(inv.id),
         _gstOriginalAmountPaid: inv._gstOriginalAmountPaid ?? inv.amountPaid,
@@ -174,12 +201,12 @@ export async function applyVoidBills() {
 }
 
 export async function restoreVoidBills() {
-  const month = $('#void-month').value;
-  if (!month) return;
+  const { from, to } = _readRange();
+  if (!from && !to) return;
   await migrateScaledAmountPaid();
   const invoices = await db.all('invoices');
-  const monthInv = invoices.filter(i => (i.date || '').slice(0, 7) === month);
-  for (const inv of monthInv) {
+  const rangeInv = invoices.filter(i => _inRange(i, from, to));
+  for (const inv of rangeInv) {
     if (!inv._gstOriginalItems) continue;
     const restoredItems = inv._gstOriginalItems;
     const newTotal      = restoredItems.reduce((s, l) => s + (l.price || 0) * (l.qty || 0), 0);
@@ -197,33 +224,34 @@ export async function restoreVoidBills() {
 }
 
 export async function downloadVoidBillsPDF() {
-  const month = $('#void-month').value;
-  if (!month) return;
+  const { from, to } = _readRange();
+  if (!from && !to) return;
 
   const invoices = await db.all('invoices');
-  const monthInv = invoices
-    .filter(i => (i.date || '').slice(0, 7) === month)
+  const rangeInv = invoices
+    .filter(i => _inRange(i, from, to))
     .sort((a, b) => (a.invoiceNo || '').localeCompare(b.invoiceNo || ''));
 
-  if (!monthInv.length) { toast('No bills this month', 'error'); return; }
+  if (!rangeInv.length) { toast('No bills in this range', 'error'); return; }
 
   const { jsPDF } = window.jspdf;
   const doc    = new jsPDF({ unit: 'mm', format: 'a4' });
   const s      = state.settings;
   const pageW  = 210, pageH = 297, mg = 12;
   const colW   = pageW - mg * 2;
+  const label  = _rangeLabel(from, to);
   let y = mg, pageNum = 1;
 
   const addPageHeader = () => {
     doc.setFontSize(7); doc.setFont('helvetica', 'normal'); doc.setTextColor(150);
-    doc.text(`${s.shopName || ''} — ${month}`, mg, 8);
+    doc.text(`${s.shopName || ''} — ${label}`, mg, 8);
     doc.text(`Page ${pageNum}`, pageW - mg, 8, { align: 'right' });
     doc.setTextColor(0);
     y = mg + 4;
   };
   addPageHeader();
 
-  for (const inv of monthInv) {
+  for (const inv of rangeInv) {
     const items  = inv.items || [];
     const billH  = 20 + items.length * 5 + 8;
     if (y + billH > pageH - mg) { doc.addPage(); pageNum++; addPageHeader(); }
@@ -274,19 +302,40 @@ export async function downloadVoidBillsPDF() {
   }
 
   if (y + 10 > pageH - mg) { doc.addPage(); pageNum++; addPageHeader(); }
-  const grandTotal = monthInv.reduce((s, i) => s + (i.total || 0), 0);
+  const grandTotal = rangeInv.reduce((s, i) => s + (i.total || 0), 0);
   doc.setFontSize(9); doc.setFont('helvetica', 'bold');
-  doc.text(`${monthInv.length} bills   Grand Total: ${fmtMoney(grandTotal)}`, mg, y);
+  doc.text(`${rangeInv.length} bills   Grand Total: ${fmtMoney(grandTotal)}`, mg, y);
 
-  doc.save(`bills-${month}.pdf`);
+  const fname = `bills-${(from || 'start')}-to-${(to || 'end')}.pdf`;
+  doc.save(fname);
   toast('PDF downloaded', 'success');
 }
 
 // ---- Wire ----
 export function wireVoidBills() {
   $('#btn-scale-down').addEventListener('click', openVoidBillsModal);
-  $('#void-month').addEventListener('change', renderVoidBillsList);
+  $('#void-date-from').addEventListener('change', renderVoidBillsList);
+  $('#void-date-to').addEventListener('change', renderVoidBillsList);
   $('#btn-void-enter').addEventListener('click', applyVoidBills);
   $('#btn-void-restore').addEventListener('click', restoreVoidBills);
   $('#btn-void-pdf').addEventListener('click', downloadVoidBillsPDF);
+
+  // Quick range buttons
+  $('#btn-void-quick-month')?.addEventListener('click', () => {
+    $('#void-date-from').value = _firstOfMonthISO();
+    $('#void-date-to').value   = _lastOfMonthISO();
+    renderVoidBillsList();
+  });
+  $('#btn-void-quick-prev')?.addEventListener('click', () => {
+    const r = _prevMonth();
+    $('#void-date-from').value = r.from;
+    $('#void-date-to').value   = r.to;
+    renderVoidBillsList();
+  });
+  $('#btn-void-quick-today')?.addEventListener('click', () => {
+    const t = _todayISO();
+    $('#void-date-from').value = t;
+    $('#void-date-to').value   = t;
+    renderVoidBillsList();
+  });
 }

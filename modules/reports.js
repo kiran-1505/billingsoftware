@@ -6,6 +6,13 @@ import {
 } from './core.js';
 import { renderBillToPrintArea } from './billing.js';
 
+// A bill counts as GST if it has a GSTIN typed in OR was explicitly marked GST
+// (e.g. via the "2+ spaces in GST field" shortcut, which saves customerType='gst'
+// but customerGst=null).
+export function isGstInvoice(inv) {
+  return !!inv.customerGst || inv.customerType === 'gst';
+}
+
 // User2 sees actual (pre-scale) totals; User1 sees filed (post-scale) totals
 export function getActualTotal(inv) {
   if (inv._gstOriginalItems) {
@@ -33,8 +40,8 @@ export async function renderReports() {
 
   const todayInv    = invoices.filter(i => (i.date || '').slice(0, 10) === today);
   const monthInv    = invoices.filter(i => (i.date || '').slice(0, 7) === monthPrefix);
-  const monthGst    = monthInv.filter(i => i.customerGst);
-  const monthWalkin = monthInv.filter(i => !i.customerGst);
+  const monthGst    = monthInv.filter(isGstInvoice);
+  const monthWalkin = monthInv.filter(i => !isGstInvoice(i));
 
   $('#rep-today-sales').textContent       = fmtMoney(todayInv.reduce((s, i) => s + getDisplayTotal(i), 0));
   $('#rep-today-bills').textContent       = `${todayInv.length} bills`;
@@ -52,8 +59,8 @@ export async function renderReports() {
   let filtered = invoices;
   if (from) filtered = filtered.filter(i => (i.date || '').slice(0, 10) >= from);
   if (to)   filtered = filtered.filter(i => (i.date || '').slice(0, 10) <= to);
-  if (state.repCustFilter === 'gst')    filtered = filtered.filter(i => i.customerGst);
-  if (state.repCustFilter === 'walkin') filtered = filtered.filter(i => !i.customerGst);
+  if (state.repCustFilter === 'gst')    filtered = filtered.filter(isGstInvoice);
+  if (state.repCustFilter === 'walkin') filtered = filtered.filter(i => !isGstInvoice(i));
 
   const body = $('#bills-body');
   if (!filtered.length) {
@@ -62,8 +69,8 @@ export async function renderReports() {
     body.innerHTML = filtered.slice(0, 200).map(i => {
       const d             = new Date(i.date);
       const itemCount     = (i.items || []).reduce((s, l) => s + l.qty, 0);
-      const gstBadge      = i.customerGst
-        ? ` <span class="text-xs bg-green-100 text-green-700 px-1 rounded" title="GSTIN: ${escapeHTML(i.customerGst)}">GST</span>`
+      const gstBadge      = isGstInvoice(i)
+        ? ` <span class="text-xs bg-green-100 text-green-700 px-1 rounded" title="${i.customerGst ? 'GSTIN: ' + escapeHTML(i.customerGst) : 'GST customer (no GSTIN)'}">GST</span>`
         : '';
       const reportedTotal = getDisplayTotal(i);
       const adjBadge      = (i._gstOriginalItems && state.currentUser === 'user2')
@@ -169,8 +176,8 @@ async function _exportBillsCSV() {
   let list = invoices;
   if (from) list = list.filter(i => (i.date || '').slice(0, 10) >= from);
   if (to)   list = list.filter(i => (i.date || '').slice(0, 10) <= to);
-  if (state.repCustFilter === 'gst')    list = list.filter(i => i.customerGst);
-  if (state.repCustFilter === 'walkin') list = list.filter(i => !i.customerGst);
+  if (state.repCustFilter === 'gst')    list = list.filter(isGstInvoice);
+  if (state.repCustFilter === 'walkin') list = list.filter(i => !isGstInvoice(i));
 
   // Column set differs by role:
   //   accounts (user1) → filed values only (what they see on screen)

@@ -831,6 +831,28 @@ function _renderGSTInvoice(invoice, s) {
         <tbody>
           ${itemsHTML}
           ${spacerRows}
+          ${(invoice.noGW || invoice.warrantyMonths || invoice.armatureMonths || invoice.guaranteeMonths) ? `
+            <tr class="seal-row"><td colspan="8" class="seal-cell">
+              ${invoice.noGW ? `
+                <div class="gst-seal">
+                  <div>NO GUARANTEE</div>
+                  <div>NO WARRANTY</div>
+                  <div>NO RETURN</div>
+                </div>` : ''}
+              ${invoice.warrantyMonths ? `
+                <div class="gst-seal">
+                  <div>WARRANTY: ${invoice.warrantyMonths} MONTH${invoice.warrantyMonths > 1 ? 'S' : ''}</div>
+                </div>` : ''}
+              ${invoice.armatureMonths ? `
+                <div class="gst-seal">
+                  <div>${invoice.armatureMonths} MONTH${invoice.armatureMonths > 1 ? 'S' : ''}</div>
+                  <div>WARRANTY ON ARMATURE/MOTOR ONLY</div>
+                </div>` : ''}
+              ${invoice.guaranteeMonths ? `
+                <div class="gst-seal">
+                  <div>GUARANTEE: ${invoice.guaranteeMonths} MONTH${invoice.guaranteeMonths > 1 ? 'S' : ''}</div>
+                </div>` : ''}
+            </td></tr>` : ''}
           <tr><td colspan="7" class="r"><em>Output ${isInterState ? 'IGST' : 'CGST'}</em></td><td class="r">${(isInterState ? igst : cgst).toFixed(2)}</td></tr>
           ${!isInterState ? `<tr><td colspan="7" class="r"><em>Output SGST</em></td><td class="r">${sgst.toFixed(2)}</td></tr>` : ''}
           ${Math.abs(roundOff) > 0.001 ? `
@@ -847,32 +869,10 @@ function _renderGSTInvoice(invoice, s) {
         </tbody>
       </table>
 
-      <div class="gst-eoe">E. &amp; O.E</div>
-
       <div class="gst-amount-words">
         <strong>Amount Chargeable (in words):</strong>
         ${amountInWords(finalTotal)}
       </div>
-
-      ${invoice.noGW ? `
-        <div class="gst-seal">
-          <div>NO GUARANTEE</div>
-          <div>NO WARRANTY</div>
-          <div>NO RETURN</div>
-        </div>` : ''}
-      ${invoice.warrantyMonths ? `
-        <div class="gst-seal">
-          <div>WARRANTY: ${invoice.warrantyMonths} MONTH${invoice.warrantyMonths > 1 ? 'S' : ''}</div>
-        </div>` : ''}
-      ${invoice.armatureMonths ? `
-        <div class="gst-seal">
-          <div>${invoice.armatureMonths} MONTH${invoice.armatureMonths > 1 ? 'S' : ''}</div>
-          <div>WARRANTY ON ARMATURE/MOTOR ONLY</div>
-        </div>` : ''}
-      ${(invoice.guaranteeMonths) ? `
-        <div class="gst-seal">
-          <div>GUARANTEE: ${invoice.guaranteeMonths} MONTH${invoice.guaranteeMonths > 1 ? 'S' : ''}</div>
-        </div>` : ''}
 
       <table class="gst-footer">
         <tr>
