@@ -143,9 +143,17 @@ function showCustomerSuggestions(inputEl, dd, fieldId) {
 function fillCustomer(c) {
   $('#customer-name').value  = c.name  || '';
   $('#customer-phone').value = c.phone || '';
-  $('#customer-gst').value   = c.gst   || '';
-  // Update type from field
-  const type = c.gst ? 'gst' : (c.type || 'walkin');
+  // If the saved customer has an actual GSTIN, drop it in.
+  // If they were a GST customer with no GSTIN (3-space marker), inject 3 spaces
+  // so the green border is restored and the next save re-marks them as GST.
+  if (c.gst) {
+    $('#customer-gst').value = c.gst;
+  } else if (c.type === 'gst') {
+    $('#customer-gst').value = '   ';
+  } else {
+    $('#customer-gst').value = '';
+  }
+  const type = (c.gst || c.type === 'gst') ? 'gst' : (c.type || 'walkin');
   setCustomerType(type);
   state.customerType = type;
 }
@@ -176,7 +184,7 @@ function renderSearchDropdown() {
         <div class="text-xs text-gray-500 mono">${escapeHTML(p.shortCode)} · ${escapeHTML(canonicalCategory(p.category))}</div>
       </div>
       <div class="text-right">
-        <div class="font-semibold">${fmtMoney(p.sellingPrice)}</div>
+        <div class="font-semibold">${fmtMoney(effectivePrice(p))}</div>
         <div class="text-xs ${p.stockQty <= 0 ? 'text-red-600' : 'text-gray-500'}">${fmtInt(p.stockQty)} in stock</div>
       </div>
     </div>
@@ -209,7 +217,7 @@ export function handleEnterInBillSearch() {
     const p = state.products.find(x => x.shortCode.toUpperCase() === parsed.code.toUpperCase());
     if (p) {
       addToCart(p, 1);
-      toast(`Added: ${p.name} — ${fmtMoney(p.sellingPrice)}`, 'success');
+      toast(`Added: ${p.name} — ${fmtMoney(effectivePrice(p))}`, 'success');
     } else {
       _addEphemeralFromQR({ code: parsed.code, name: parsed.name, price: parsed.price });
       toast(`Added from QR (not in DB): ${parsed.name} — ${fmtMoney(parsed.price)}`, '');
@@ -225,14 +233,14 @@ export function handleEnterInBillSearch() {
     const pp   = parseScannedPayload(rest);
     const code = pp ? pp.code : rest;
     const p    = state.products.find(x => x.shortCode.toUpperCase() === code.toUpperCase());
-    if (p) { addToCart(p, qty); toast(`Added ${qty} × ${p.name} — ${fmtMoney(p.sellingPrice * qty)}`, 'success'); input.value = ''; return; }
+    if (p) { addToCart(p, qty); toast(`Added ${qty} × ${p.name} — ${fmtMoney(effectivePrice(p) * qty)}`, 'success'); input.value = ''; return; }
     toast('Code not found: ' + code, 'error');
     return;
   }
 
   if (/^[A-Z]+-\d+$/i.test(raw)) {
     const p = state.products.find(x => x.shortCode.toUpperCase() === raw.toUpperCase());
-    if (p) { addToCart(p, 1); toast(`Added: ${p.name} — ${fmtMoney(p.sellingPrice)}`, 'success'); input.value = ''; return; }
+    if (p) { addToCart(p, 1); toast(`Added: ${p.name} — ${fmtMoney(effectivePrice(p))}`, 'success'); input.value = ''; return; }
     toast('Code not found: ' + raw, 'error');
     return;
   }
@@ -258,11 +266,17 @@ function _addEphemeralFromQR(j) {
   renderCart();
 }
 
+// During billing, Our Price (if set) is what the customer is charged.
+// MRP (sellingPrice) is only for labels/sticker comparison.
+export function effectivePrice(p) {
+  return (p && p.ourPrice != null && p.ourPrice !== '') ? Number(p.ourPrice) : (p?.sellingPrice ?? 0);
+}
+
 export function addToCart(p, qty) {
   if (qty <= 0) return;
   const existing = state.cart.find(l => l.productId === p.id);
   if (existing) existing.qty += qty;
-  else state.cart.push({ productId: p.id, shortCode: p.shortCode, name: p.name, price: p.sellingPrice, qty, unit: p.unit || 'piece' });
+  else state.cart.push({ productId: p.id, shortCode: p.shortCode, name: p.name, price: effectivePrice(p), qty, unit: p.unit || 'piece' });
   renderCart();
   if (state.sellPickerCategory) renderSellPane();
 }
@@ -420,7 +434,7 @@ export function renderSellPane() {
             <div class="sell-prod-name">${escapeHTML(p.name)}</div>
             <div class="sell-prod-code mono">${escapeHTML(p.shortCode)}</div>
             <div class="sell-prod-footer">
-              <span class="sell-prod-price">${fmtMoney(p.sellingPrice)}</span>
+              <span class="sell-prod-price">${fmtMoney(effectivePrice(p))}</span>
               <span class="sell-prod-stock ${low ? 'low' : ''}">${outOfStock ? 'Out of stock' : p.stockQty + ' left'}</span>
             </div>
           </button>`;
@@ -478,7 +492,7 @@ export function renderSellPane() {
           <div class="sell-prod-name">${escapeHTML(p.name)}</div>
           <div class="sell-prod-code mono">${escapeHTML(p.shortCode)}</div>
           <div class="sell-prod-footer">
-            <span class="sell-prod-price">${fmtMoney(p.sellingPrice)}</span>
+            <span class="sell-prod-price">${fmtMoney(effectivePrice(p))}</span>
             <span class="sell-prod-stock ${low ? 'low' : ''}">${outOfStock ? 'Out of stock' : p.stockQty + ' left'}</span>
           </div>
         </button>`;
@@ -623,8 +637,9 @@ export async function saveAndPrintBill() {
   const amountPaid    = amountPaidRaw === '' ? null : parseFloat(amountPaidRaw);
   const notes         = $('#bill-notes').value.trim();
   const noGW          = $('#toggle-no-gw').checked || null;
-  const warrantyMonths = $('#toggle-gw').checked
-    ? (parseInt($('#gw-warranty').value) || null) : null;
+  // Only the armature/motor warranty is editable from the cart UI now.
+  // warrantyMonths is kept null for new bills (legacy bills keep their value via the renderer).
+  const warrantyMonths = null;
   const armatureMonths = $('#toggle-armature')?.checked
     ? (parseInt($('#armature-months').value) || null) : null;
   const invoice = {
@@ -669,9 +684,6 @@ export async function saveAndPrintBill() {
     $('#amount-paid').value    = '';
     $('#bill-notes').value     = '';
     $('#toggle-no-gw').checked = false;
-    $('#toggle-gw').checked    = false;
-    $('#gw-warranty').value    = '';
-    $('#gw-warranty').classList.add('hidden');
     if ($('#toggle-armature')) $('#toggle-armature').checked = false;
     if ($('#armature-months')) { $('#armature-months').value = ''; $('#armature-months').classList.add('hidden'); }
     renderCart();
@@ -908,10 +920,6 @@ export function wireBilling() {
     const isGst = isGstFromField();
     setCustomerType(isGst ? 'gst' : 'walkin');
     state.customerType = isGst ? 'gst' : 'walkin';
-  });
-  // Warranty toggle shows/hides the months input
-  $('#toggle-gw').addEventListener('change', () => {
-    $('#gw-warranty').classList.toggle('hidden', !$('#toggle-gw').checked);
   });
   // Armature warranty toggle shows/hides the months input
   $('#toggle-armature')?.addEventListener('change', () => {

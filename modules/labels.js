@@ -5,6 +5,11 @@ import {
   downloadBlob, registerTabRenderer, encodeCostCode,
 } from './core.js';
 
+// Basic label prints the customer-facing price under the "MRP" heading.
+// Use Our Price (what the customer actually pays) if set; fall back to sellingPrice.
+const _labelPrice = (p) =>
+  (p?.ourPrice != null && p?.ourPrice !== '') ? Number(p.ourPrice) : (p?.sellingPrice ?? 0);
+
 function _labelsList() {
   const q   = $('#labels-search').value.trim().toLowerCase();
   const cat = $('#labels-category').value;
@@ -34,7 +39,7 @@ export function renderLabels() {
           <canvas data-qr="${p.id}" width="70" height="70"></canvas>
         </div>
         <div class="shortcode">${escapeHTML(p.shortCode)}</div>
-        <div class="mrp">MRP ${fmtMoney(p.sellingPrice)}</div>
+        <div class="mrp">MRP ${fmtMoney(_labelPrice(p))}</div>
       </div>`;
   }).join('');
 
@@ -84,7 +89,7 @@ async function _renderLabelsToPrintArea(ids) {
         </div>
         <div class="shortcode">${escapeHTML(p.shortCode)}</div>
         ${cc ? `<div class="shortcode" style="font-size:9px;letter-spacing:1px">${escapeHTML(cc)}</div>` : ''}
-        <div class="mrp">MRP ${fmtMoney(p.sellingPrice)}</div>
+        <div class="mrp">MRP ${fmtMoney(_labelPrice(p))}</div>
       </div>`;
   }));
   $('#print-area').innerHTML = `<div class="print-labels">${blocks.join('')}</div>`;
@@ -107,7 +112,7 @@ export async function showSingleLabel(productId) {
       </div>
       <div class="shortcode">${escapeHTML(p.shortCode)}</div>
       ${cc ? `<div class="shortcode" style="font-size:9px;letter-spacing:1px">${escapeHTML(cc)}</div>` : ''}
-      <div class="mrp">MRP ${fmtMoney(p.sellingPrice)}</div>
+      <div class="mrp">MRP ${fmtMoney(_labelPrice(p))}</div>
     </div>`;
   openModal('modal-label');
   setTimeout(() => {
@@ -120,6 +125,42 @@ async function _printSelectedLabels() {
   const ids = Array.from(state.selectedLabels);
   if (!ids.length) return toast('Select labels first', 'error');
   await _renderLabelsToPrintArea(ids);
+  setTimeout(() => window.print(), 80);
+}
+
+// ---- Detailed label (MRP, Our Price, Code, ShortCode) ----
+async function _renderDetailedLabelsToPrintArea(ids) {
+  const items  = ids.map(id => state.products.find(p => p.id === id)).filter(Boolean);
+  const blocks = await Promise.all(items.map(async (p) => {
+    let bcImg = '';
+    try {
+      const c = document.createElement('canvas');
+      JsBarcode(c, p.shortCode, { format: 'CODE128', displayValue: false, margin: 0, height: 36, width: 1.5 });
+      bcImg = c.toDataURL('image/png');
+    } catch {}
+    const cc = p.costCode || '';
+    const fx = p.fixedCode || '';
+    return `
+      <div class="label-card detailed-label">
+        <div class="dl-name">${escapeHTML(p.name)}</div>
+        <div class="dl-mrp"><span class="dl-lbl">MRP</span> <span class="dl-val">${fmtMoney(p.sellingPrice)}</span></div>
+        ${p.ourPrice != null ? `<div class="dl-mrp"><span class="dl-lbl">Our price</span> <span class="dl-val">${fmtMoney(p.ourPrice)}</span></div>` : ''}
+        ${(fx || cc) ? `
+          <div class="dl-line dl-codes">
+            <span class="dl-mono dl-fx">${fx ? escapeHTML(fx.toUpperCase()) : ''}</span>
+            <span class="dl-cc">${cc ? `<span class="dl-cap">Code:</span> <span class="dl-mono">${escapeHTML(cc.toUpperCase())}</span>` : ''}</span>
+          </div>` : ''}
+        ${bcImg ? `<img src="${bcImg}" alt="barcode" style="height:30px;width:auto;display:block;margin:2px auto 0"/>` : ''}
+        <div class="dl-line"><span class="dl-mono">${escapeHTML(p.shortCode)}</span></div>
+      </div>`;
+  }));
+  $('#print-area').innerHTML = `<div class="print-labels detailed">${blocks.join('')}</div>`;
+}
+
+async function _printSelectedDetailedLabels() {
+  const ids = Array.from(state.selectedLabels);
+  if (!ids.length) return toast('Select labels first', 'error');
+  await _renderDetailedLabelsToPrintArea(ids);
   setTimeout(() => window.print(), 80);
 }
 
@@ -165,7 +206,7 @@ async function _downloadLabelsPDF(ids) {
     doc.text(p.shortCode, x + cellW / 2, y + cellH - 6, { align: 'center' });
     doc.setFontSize(10);
     doc.setFont(undefined, 'bold');
-    doc.text(`MRP ${fmtMoney(p.sellingPrice)}`, x + cellW / 2, y + cellH - 1.5, { align: 'center' });
+    doc.text(`MRP ${fmtMoney(_labelPrice(p))}`, x + cellW / 2, y + cellH - 1.5, { align: 'center' });
     doc.setFont(undefined, 'normal');
   }
   doc.save(`labels-${todayISO()}.pdf`);
@@ -185,6 +226,7 @@ export function wireLabels() {
     renderLabels();
   });
   $('#btn-labels-print').addEventListener('click', _printSelectedLabels);
+  $('#btn-labels-print-detailed')?.addEventListener('click', _printSelectedDetailedLabels);
   $('#btn-labels-pdf').addEventListener('click', () => _downloadLabelsPDF());
   $('#label-print').addEventListener('click', async () => {
     const id = +$('#label-preview').dataset.productId;

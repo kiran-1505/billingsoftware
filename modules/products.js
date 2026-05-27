@@ -9,6 +9,10 @@ import {
 
 let _productModalImage = null;
 let _prodViewMode = 'list'; // 'list' | 'card'
+
+// Display the price the customer actually pays — Our Price if set, else MRP.
+const _displayPrice = (p) =>
+  (p?.ourPrice != null && p?.ourPrice !== '') ? Number(p.ourPrice) : (p?.sellingPrice ?? 0);
 let _catViewMode  = 'card'; // 'card' | 'list'
 
 // ---- Product counts helper (also used by billing's sell pane via state) ----
@@ -125,7 +129,7 @@ export function renderProductsList() {
         </td>
         <td>${escapeHTML(canonicalCategory(p.category))}</td>
         <td>${escapeHTML(p.unit || 'piece')}</td>
-        <td class="text-right">${fmtMoney(p.sellingPrice)}</td>
+        <td class="text-right">${fmtMoney(_displayPrice(p))}</td>
         <td class="text-right ${p.stockQty <= (p.reorderLevel || 0) ? 'stock-low' : ''}">${fmtInt(p.stockQty)}</td>
         <td class="whitespace-nowrap">
           <button class="text-blue-600 text-sm hover:underline mr-2" data-edit="${p.id}">Edit</button>
@@ -181,7 +185,7 @@ function _renderProductsCardView(list) {
           <div class="font-semibold text-gray-800 text-sm leading-tight" title="${escapeHTML(p.name)}">${escapeHTML(p.name)}</div>
           <div class="text-xs text-gray-500 truncate mt-0.5">${escapeHTML(canonicalCategory(p.category))}</div>
           <div class="mt-auto pt-1.5 flex items-center justify-between">
-            <span class="font-bold text-gray-800">${fmtMoney(p.sellingPrice)}</span>
+            <span class="font-bold text-gray-800">${fmtMoney(_displayPrice(p))}</span>
             <span class="text-xs ${stockClass}">Qty: ${fmtInt(p.stockQty)}</span>
           </div>
         </div>
@@ -235,6 +239,7 @@ export function openProductModal(id) {
     : (state.currentProductsCategory || state.categories[0]?.name || 'General');
   $('#pm-unit').value      = editing?.unit || 'piece';
   $('#pm-price').value     = editing?.sellingPrice ?? '';
+  $('#pm-our-price').value = editing?.ourPrice ?? '';
   $('#pm-stock').value     = editing?.stockQty ?? 0;
   $('#pm-reorder').value   = editing?.reorderLevel ?? 5;
   $('#pm-hsn').value       = editing?.hsn || '';
@@ -272,6 +277,8 @@ export function openProductModal(id) {
   if (ccWrap) ccWrap.style.display = '';
   const ccInput = $('#pm-costcode');
   if (ccInput) ccInput.value = editing?.costCode || '';
+  const fxInput = $('#pm-fixed-code');
+  if (fxInput) fxInput.value = editing?.fixedCode || '';
 
   // Reset inline "+ New category" mini form each open
   _resetNewCategoryMiniForm();
@@ -427,7 +434,11 @@ async function _saveProductFromModal() {
     }
   }
   const unit      = $('#pm-unit').value;
-  const price     = parseFloat($('#pm-price').value);
+  const mrpRaw    = $('#pm-price').value.trim();
+  const ourPriceRaw = $('#pm-our-price').value.trim();
+  const ourPrice  = ourPriceRaw === '' ? NaN : parseFloat(ourPriceRaw);
+  // MRP is optional — defaults to Our Price when blank
+  const price     = mrpRaw === '' ? ourPrice : parseFloat(mrpRaw);
   const stock     = parseInt($('#pm-stock').value || '0', 10);
   const reorder   = parseInt($('#pm-reorder').value || '0', 10);
   const hsn       = $('#pm-hsn').value.trim();
@@ -435,19 +446,21 @@ async function _saveProductFromModal() {
   const sgstRate  = parseFloat($('#pm-sgst-rate').value) || 0;
   const gstRate   = cgstRate + sgstRate; // back-compat field
   const costCode  = ($('#pm-costcode')?.value || '').trim().toLowerCase() || null;
+  const fixedCode = ($('#pm-fixed-code')?.value || '').trim().toLowerCase() || null;
   const editingId = $('#pm-save').dataset.editingId;
 
-  if (!name)         return toast('Name required', 'error');
-  if (!category)     return toast('Pick a category', 'error');
-  if (!(price >= 0)) return toast('Valid price required', 'error');
+  if (!name)            return toast('Name required', 'error');
+  if (!category)        return toast('Pick a category', 'error');
+  if (!(ourPrice >= 0)) return toast('Our Price is required', 'error');
 
   try {
     if (editingId) {
       const p = await db.get('products', +editingId);
       p.name = name; p.category = category; p.unit = unit;
-      p.sellingPrice = price; p.reorderLevel = reorder; p.hsn = hsn;
+      p.sellingPrice = price; p.ourPrice = ourPrice;
+      p.reorderLevel = reorder; p.hsn = hsn;
       p.gstRate = gstRate; p.cgstRate = cgstRate; p.sgstRate = sgstRate;
-      p.image = _productModalImage; p.costCode = costCode;
+      p.image = _productModalImage; p.costCode = costCode; p.fixedCode = fixedCode;
       p.updatedAt = nowISO();
       if (stock !== p.stockQty) {
         await db.add('stockMovements', {
@@ -462,8 +475,10 @@ async function _saveProductFromModal() {
       const shortCode = await db.nextShortCode();
       const prod = {
         shortCode, name, category, unit,
-        sellingPrice: price, stockQty: stock, reorderLevel: reorder, hsn,
-        image: _productModalImage, costCode, gstRate, cgstRate, sgstRate,
+        sellingPrice: price, ourPrice,
+        stockQty: stock, reorderLevel: reorder, hsn,
+        image: _productModalImage, costCode, fixedCode,
+        gstRate, cgstRate, sgstRate,
         createdAt: nowISO(), updatedAt: nowISO(),
       };
       const newId = await db.add('products', prod);

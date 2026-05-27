@@ -489,6 +489,38 @@ textarea:focus {
   .print-labels .label-card svg,
   .print-labels .label-card canvas,
   .print-labels .label-card img { max-width: 100%; height: auto; }
+
+  /* Detailed label: name + MRP + Our Price (bold) + Code + ShortCode */
+  .print-labels.detailed { grid-template-columns: repeat(3, 1fr); }
+  .print-labels .detailed-label {
+    text-align: center; color: #000; padding: 3mm 2mm;
+    page-break-inside: avoid; break-inside: avoid;
+  }
+  .print-labels .detailed-label .dl-name {
+    font-size: 10pt; font-weight: 600;
+    margin-bottom: 2mm; line-height: 1.2;
+  }
+  .print-labels .detailed-label .dl-mrp {
+    font-size: 12pt; font-weight: 800;
+    margin: 1mm 0;
+  }
+  .print-labels .detailed-label .dl-lbl { font-size: 9pt; }
+  .print-labels .detailed-label .dl-val { font-weight: 800; }
+  .print-labels .detailed-label .dl-line {
+    font-size: 9pt; margin: 1mm 0;
+  }
+  .print-labels .detailed-label .dl-cap {
+    font-size: 8pt; color: #444; letter-spacing: 1px;
+  }
+  .print-labels .detailed-label .dl-mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 10pt;
+  }
+  /* Row that holds the fixed-price code (left) and "Code: xxx" (right) */
+  .print-labels .detailed-label .dl-codes {
+    display: flex; justify-content: space-between; align-items: baseline;
+    padding: 0 1mm; gap: 4mm;
+  }
 }
 
 /* ── Bigger tap targets on touch devices ────────────── */
