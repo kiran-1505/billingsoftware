@@ -55,8 +55,8 @@ function _renderCategoryCardView() {
   grid.innerHTML = cats.map(c => `
     <button class="cat-card text-left" data-cat="${escapeHTML(c.name)}">
       ${c.image
-        ? `<img src="${escapeHTML(c.image)}" class="w-full h-24 object-cover rounded mb-2" />`
-        : `<div class="w-full h-24 rounded mb-2 bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-3xl">${escapeHTML(c.name.slice(0, 2).toUpperCase())}</div>`}
+        ? `<img src="${escapeHTML(c.image)}" class="w-full h-40 object-cover rounded mb-2" />`
+        : `<div class="w-full h-40 rounded mb-2 bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-3xl">${escapeHTML(c.name.slice(0, 2).toUpperCase())}</div>`}
       <div class="font-semibold text-gray-800 truncate">${escapeHTML(c.name)}</div>
       <div class="text-xs text-gray-500 mt-1">${fmtInt(c.count)} ${c.count === 1 ? 'item' : 'items'}</div>
     </button>
@@ -161,8 +161,8 @@ function _renderProductsCardView(list) {
     return `
       <div class="relative bg-white border rounded-lg overflow-hidden shadow-sm flex flex-col">
         ${p.image
-          ? `<img src="${escapeHTML(p.image)}" class="w-full h-28 object-cover flex-shrink-0" />`
-          : `<div class="w-full h-28 bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-3xl flex-shrink-0">${escapeHTML(initials)}</div>`
+          ? `<img src="${escapeHTML(p.image)}" class="w-full h-44 object-cover flex-shrink-0" />`
+          : `<div class="w-full h-44 bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-3xl flex-shrink-0">${escapeHTML(initials)}</div>`
         }
         <!-- 3-dot kebab menu -->
         <button class="absolute top-1.5 right-1.5 w-7 h-7 bg-white bg-opacity-90 rounded-full flex items-center justify-center text-gray-600 hover:bg-gray-100 shadow text-base leading-none font-bold" data-prod-menu="${p.id}">&#8942;</button>
@@ -511,47 +511,272 @@ async function _deleteProduct(id) {
 }
 
 // ---- Bulk add ----
-function _openBulkModal() {
-  $('#bulk-text').value = '';
-  $('#bulk-parse-summary').textContent = '';
-  $('#bulk-save').disabled = true;
-  state.bulkPreview = null;
-  openModal('modal-bulk');
+// ---- Bulk add (Excel-style editable grid) ----
+const _BULK_COLS = [
+  { key: 'name',         type: 'text',   required: true },
+  { key: 'category',     type: 'text',   required: true, datalist: true },
+  { key: 'ourPrice',     type: 'number', required: true, step: '0.01', min: '0' },
+  { key: 'sellingPrice', type: 'number', step: '0.01', min: '0' },
+  { key: 'unit',         type: 'select', options: ['piece','set','box','meter','kg','litre','pack'], default: 'piece' },
+  { key: 'stockQty',     type: 'number', step: '1', min: '0', default: '0' },
+  { key: 'reorderLevel', type: 'number', step: '1', min: '0', default: '5' },
+  { key: 'hsn',          type: 'text' },
+  { key: 'cgstRate',     type: 'number', step: '0.01', min: '0', default: '9' },
+  { key: 'sgstRate',     type: 'number', step: '0.01', min: '0', default: '9' },
+  { key: 'costCode',     type: 'text' },
+  { key: 'fixedCode',    type: 'text' },
+];
+
+function _bulkAddRow(values = {}) {
+  const tbody = $('#bulk-body');
+  const tr = document.createElement('tr');
+  tr.innerHTML =
+    `<td class="bulk-rownum"></td>` +
+    _BULK_COLS.map(c => {
+      const raw = values[c.key];
+      const val = (raw !== undefined && raw !== '') ? raw : (c.default ?? '');
+      if (c.type === 'select') {
+        return `<td><select data-col="${c.key}" class="bulk-input">${c.options.map(o => `<option value="${o}" ${o === val ? 'selected' : ''}>${o}</option>`).join('')}</select></td>`;
+      }
+      const isCat = c.datalist ? 'data-bulk-cat="1"' : '';
+      const step = c.step ? `step="${c.step}"` : '';
+      const min  = c.min  ? `min="${c.min}"`  : '';
+      return `<td><input type="${c.type}" data-col="${c.key}" class="bulk-input" ${isCat} ${step} ${min} value="${escapeHTML(String(val))}" autocomplete="off" /></td>`;
+    }).join('') +
+    `<td class="text-center"><button type="button" class="bulk-del-btn" title="Delete row">&times;</button></td>`;
+  tbody.appendChild(tr);
+  tr.querySelector('.bulk-del-btn').addEventListener('click', () => {
+    tr.remove();
+    _bulkRenumber();
+    _bulkUpdateSummary();
+  });
+  tr.querySelectorAll('.bulk-input').forEach(el => el.addEventListener('input', _bulkUpdateSummary));
+  // Wire the category search dropdown for any category input in this row
+  tr.querySelectorAll('[data-bulk-cat]').forEach(_wireBulkCategoryDropdown);
+  _bulkRenumber();
+  _bulkUpdateSummary();
 }
 
-function _parseBulk() {
-  const text = $('#bulk-text').value.trim();
-  if (!text) { toast('Paste some rows first', 'error'); return; }
-  const rows   = text.split(/\r?\n/).map(r => r.trim()).filter(Boolean);
-  const parsed = [];
-  const errors = [];
-  const catByLower = Object.fromEntries(state.categories.map(c => [c.name.toLowerCase(), c.name]));
-  rows.forEach((r, i) => {
-    const parts = r.includes('\t') ? r.split('\t') : r.split(',');
-    const [name, cat, price, unit, stock, reorder] = parts.map(s => (s || '').trim());
-    if (!name) { errors.push(`Row ${i + 1}: missing name`); return; }
-    let catName = catByLower[(cat || '').toLowerCase()];
-    if (!catName) {
-      const legacy = LEGACY_CAT_CODE[(cat || '').toUpperCase()];
-      if (legacy && catByLower[legacy.toLowerCase()]) catName = legacy;
-    }
-    if (!catName) { errors.push(`Row ${i + 1}: unknown category "${cat}"`); return; }
-    const priceNum = parseFloat(price);
-    if (!(priceNum >= 0)) { errors.push(`Row ${i + 1}: invalid price`); return; }
-    parsed.push({ name, category: catName, sellingPrice: priceNum, unit: unit || 'piece', stockQty: parseInt(stock || '0', 10) || 0, reorderLevel: parseInt(reorder || '5', 10) || 0 });
+// ---- Floating category search dropdown (shared across all bulk rows) ----
+let _bulkCatActiveInput = null;
+let _bulkCatActiveIdx = -1;
+
+function _bulkCatMatches() {
+  const q = (_bulkCatActiveInput?.value || '').trim().toLowerCase();
+  return state.categories
+    .filter(c => !q || c.name.toLowerCase().includes(q))
+    .slice(0, 50);
+}
+
+function _renderBulkCatDropdown() {
+  const dd = $('#bulk-cat-dropdown');
+  if (!dd || !_bulkCatActiveInput) return;
+  const matches = _bulkCatMatches();
+  const rect = _bulkCatActiveInput.getBoundingClientRect();
+  dd.style.left  = rect.left + 'px';
+  dd.style.top   = (rect.bottom + 2) + 'px';
+  dd.style.width = Math.max(rect.width, 200) + 'px';
+  if (!matches.length) {
+    const q = (_bulkCatActiveInput.value || '').trim();
+    dd.innerHTML = q
+      ? `<div class="px-3 py-2 text-gray-500">No match — <strong>"${escapeHTML(q)}"</strong> will be created on save</div>`
+      : `<div class="px-3 py-2 text-gray-400">No categories yet — type one</div>`;
+    dd.classList.remove('hidden');
+    _bulkCatActiveIdx = -1;
+    return;
+  }
+  if (_bulkCatActiveIdx >= matches.length) _bulkCatActiveIdx = matches.length - 1;
+  dd.innerHTML = matches.map((c, idx) => `
+    <div class="px-3 py-2 cursor-pointer flex items-center gap-2 ${idx === _bulkCatActiveIdx ? 'bg-blue-100' : 'hover:bg-gray-100'}" data-cat="${escapeHTML(c.name)}">
+      ${c.image
+        ? `<img src="${escapeHTML(c.image)}" class="w-5 h-5 object-cover rounded flex-shrink-0" />`
+        : `<div class="w-5 h-5 rounded bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-[9px] flex-shrink-0">${escapeHTML(c.name.slice(0, 2).toUpperCase())}</div>`}
+      <span>${escapeHTML(c.name)}</span>
+    </div>
+  `).join('');
+  dd.classList.remove('hidden');
+  dd.querySelectorAll('[data-cat]').forEach(el => {
+    el.addEventListener('mousedown', (e) => {
+      e.preventDefault(); // prevent blur before we set the value
+      if (_bulkCatActiveInput) {
+        _bulkCatActiveInput.value = el.dataset.cat;
+        _bulkCatActiveInput.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      _closeBulkCatDropdown();
+    });
   });
-  state.bulkPreview = parsed;
-  const summary = `Parsed ${parsed.length} row(s)` + (errors.length ? ` — ${errors.length} error(s): ` + errors.slice(0, 3).join(' | ') : '');
-  $('#bulk-parse-summary').textContent = summary;
-  $('#bulk-save').disabled = parsed.length === 0;
+}
+
+function _closeBulkCatDropdown() {
+  const dd = $('#bulk-cat-dropdown');
+  if (dd) dd.classList.add('hidden');
+  _bulkCatActiveInput = null;
+  _bulkCatActiveIdx = -1;
+}
+
+function _wireBulkCategoryDropdown(input) {
+  input.addEventListener('focus', () => {
+    _bulkCatActiveInput = input;
+    _bulkCatActiveIdx = -1;
+    _renderBulkCatDropdown();
+  });
+  input.addEventListener('input', () => {
+    _bulkCatActiveIdx = -1;
+    _renderBulkCatDropdown();
+  });
+  input.addEventListener('keydown', (e) => {
+    if ($('#bulk-cat-dropdown')?.classList.contains('hidden')) return;
+    const matches = _bulkCatMatches();
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      _bulkCatActiveIdx = Math.min(matches.length - 1, _bulkCatActiveIdx + 1);
+      _renderBulkCatDropdown();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      _bulkCatActiveIdx = Math.max(0, _bulkCatActiveIdx - 1);
+      _renderBulkCatDropdown();
+    } else if (e.key === 'Enter' && _bulkCatActiveIdx >= 0 && matches[_bulkCatActiveIdx]) {
+      e.preventDefault();
+      input.value = matches[_bulkCatActiveIdx].name;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      _closeBulkCatDropdown();
+    } else if (e.key === 'Escape') {
+      _closeBulkCatDropdown();
+    }
+  });
+  input.addEventListener('blur', () => setTimeout(_closeBulkCatDropdown, 150));
+}
+
+function _bulkRenumber() {
+  Array.from($('#bulk-body').children).forEach((tr, i) => {
+    tr.firstElementChild.textContent = i + 1;
+  });
+}
+
+function _openBulkModal() {
+  $('#bulk-body').innerHTML = '';
+  $('#bulk-parse-summary').textContent = '';
+  $('#bulk-save').disabled = true;
+  // Start with 5 empty rows for quick typing
+  for (let i = 0; i < 5; i++) _bulkAddRow();
+  openModal('modal-bulk');
+  setTimeout(() => $('#bulk-body input,#bulk-body select')?.focus?.(), 50);
+}
+
+function _bulkReadRows() {
+  const rows = [];
+  for (const tr of $('#bulk-body').children) {
+    const obj = {};
+    let hasContent = false;
+    tr.querySelectorAll('[data-col]').forEach(el => {
+      const v = (el.value || '').trim();
+      if (v && !['piece','0','5','9'].includes(v)) hasContent = true; // ignore default-only rows
+      if (v) hasContent = true;
+      obj[el.dataset.col] = v;
+    });
+    if (hasContent) rows.push({ obj, tr });
+  }
+  return rows;
+}
+
+function _bulkUpdateSummary() {
+  const rows = _bulkReadRows();
+  const errors = [];
+  rows.forEach(({ obj, tr }, i) => {
+    const cells = tr.querySelectorAll('[data-col]');
+    cells.forEach(c => c.classList.remove('invalid'));
+    let rowOk = true;
+    if (!obj.name)     { errors.push(`Row ${i + 1}: name`); tr.querySelector('[data-col="name"]')?.classList.add('invalid'); rowOk = false; }
+    if (!obj.category) { errors.push(`Row ${i + 1}: category`); tr.querySelector('[data-col="category"]')?.classList.add('invalid'); rowOk = false; }
+    const op = parseFloat(obj.ourPrice);
+    if (!(op >= 0))    { errors.push(`Row ${i + 1}: our price`); tr.querySelector('[data-col="ourPrice"]')?.classList.add('invalid'); rowOk = false; }
+  });
+  const sum = $('#bulk-parse-summary');
+  if (!sum) return;
+  if (!rows.length) {
+    sum.textContent = 'Fill at least one row';
+    sum.className = 'text-sm text-gray-500';
+  } else if (errors.length) {
+    sum.textContent = `${rows.length} row${rows.length === 1 ? '' : 's'} — ${errors.length} missing field${errors.length === 1 ? '' : 's'}: ${errors.slice(0, 3).join(' · ')}${errors.length > 3 ? '…' : ''}`;
+    sum.className = 'text-sm text-red-600 font-medium';
+  } else {
+    sum.textContent = `${rows.length} row${rows.length === 1 ? '' : 's'} ready to save`;
+    sum.className = 'text-sm text-green-700 font-medium';
+  }
+  $('#bulk-save').disabled = !rows.length || !!errors.length;
+}
+
+async function _bulkPasteFromClipboard() {
+  try {
+    if (!navigator.clipboard?.readText) throw new Error('Clipboard API not available — paste directly into a cell instead');
+    const text = await navigator.clipboard.readText();
+    if (!text || !text.trim()) return toast('Clipboard is empty', 'error');
+    const lines = text.split(/\r?\n/).filter(l => l.trim());
+    // Detect header row
+    const firstLower = lines[0].toLowerCase();
+    const looksLikeHeader = /name|category|price/.test(firstLower);
+    const dataLines = looksLikeHeader ? lines.slice(1) : lines;
+    if (!dataLines.length) return toast('No data rows in clipboard', 'error');
+    // Clear empty default rows before pasting
+    const existing = Array.from($('#bulk-body').children);
+    for (const tr of existing) {
+      const inputs = tr.querySelectorAll('[data-col]');
+      const empty = Array.from(inputs).every(el => {
+        const v = (el.value || '').trim();
+        return !v || ['piece','0','5','9'].includes(v);
+      });
+      if (empty) tr.remove();
+    }
+    for (const line of dataLines) {
+      const parts = line.includes('\t') ? line.split('\t') : line.split(',');
+      const values = {};
+      _BULK_COLS.forEach((c, i) => { values[c.key] = (parts[i] || '').trim(); });
+      _bulkAddRow(values);
+    }
+    toast(`Pasted ${dataLines.length} row${dataLines.length === 1 ? '' : 's'}`, 'success');
+  } catch (e) {
+    console.error(e);
+    toast('Could not paste: ' + e.message, 'error');
+  }
 }
 
 async function _saveBulk() {
-  if (!state.bulkPreview?.length) return;
+  const rows = _bulkReadRows();
+  if (!rows.length) return;
+  const catByLower = Object.fromEntries(state.categories.map(c => [c.name.toLowerCase(), c.name]));
   let saved = 0;
-  for (const row of state.bulkPreview) {
+  let categoriesCreated = 0;
+  for (const { obj: r } of rows) {
+    // Auto-create category if it doesn't exist
+    let category = catByLower[(r.category || '').toLowerCase()];
+    if (!category) {
+      await db.add('categories', { name: r.category, createdAt: nowISO() });
+      category = r.category;
+      catByLower[r.category.toLowerCase()] = r.category;
+      categoriesCreated++;
+    }
     const shortCode = await db.nextShortCode();
-    const prod = { ...row, shortCode, gstRate: 18, hsn: '', createdAt: nowISO(), updatedAt: nowISO() };
+    const cgst = parseFloat(r.cgstRate) || 0;
+    const sgst = parseFloat(r.sgstRate) || 0;
+    const ourPrice = r.ourPrice ? parseFloat(r.ourPrice) : null;
+    const mrp      = r.sellingPrice ? parseFloat(r.sellingPrice) : (ourPrice ?? 0);
+    const prod = {
+      shortCode,
+      name: r.name,
+      category,
+      sellingPrice: mrp,
+      ourPrice,
+      unit: r.unit || 'piece',
+      stockQty: parseInt(r.stockQty || '0', 10) || 0,
+      reorderLevel: parseInt(r.reorderLevel || '5', 10) || 5,
+      hsn: r.hsn || '',
+      cgstRate: cgst,
+      sgstRate: sgst,
+      gstRate: cgst + sgst,
+      costCode:  (r.costCode  || '').trim().toLowerCase() || null,
+      fixedCode: (r.fixedCode || '').trim().toLowerCase() || null,
+      createdAt: nowISO(), updatedAt: nowISO(),
+    };
     const newId = await db.add('products', prod);
     if (prod.stockQty > 0) {
       await db.add('stockMovements', { productId: newId, type: 'receipt', qty: prod.stockQty, reason: 'Opening stock (bulk)', date: nowISO() });
@@ -559,9 +784,12 @@ async function _saveBulk() {
     saved++;
   }
   closeModal('modal-bulk');
-  toast(`Saved ${saved} product(s)`, 'success');
+  toast(`Saved ${saved} product${saved === 1 ? '' : 's'}${categoriesCreated ? ` (+${categoriesCreated} new categor${categoriesCreated === 1 ? 'y' : 'ies'})` : ''}`, 'success');
+  await refreshCategories();
   await refreshProducts();
+  populateCategorySelects();
   renderProductsCategoryView();
+  document.dispatchEvent(new CustomEvent('toolbill:categories-changed'));
 }
 
 // ---- Category manager ----
@@ -745,8 +973,14 @@ export function wireProducts() {
     if (prev) { prev.src = _newCatImage; prev.style.display = ''; }
     if (ph)   ph.style.display = 'none';
   });
-  $('#bulk-parse').addEventListener('click', _parseBulk);
   $('#bulk-save').addEventListener('click', _saveBulk);
+  $('#bulk-add-row')?.addEventListener('click', () => _bulkAddRow());
+  $('#bulk-paste')?.addEventListener('click', _bulkPasteFromClipboard);
+  $('#bulk-clear')?.addEventListener('click', () => {
+    if (!confirm('Clear all rows?')) return;
+    $('#bulk-body').innerHTML = '';
+    for (let i = 0; i < 5; i++) _bulkAddRow();
+  });
   $('#product-search').addEventListener('input', debounce(renderProductsList, 100));
   $('#btn-products-back').addEventListener('click', () => {
     state.currentProductsCategory = null;

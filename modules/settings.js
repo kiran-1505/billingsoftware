@@ -7,6 +7,7 @@ import {
   switchTab,
 } from './core.js';
 import { applyUserState } from './auth.js';
+import { getActualTotal } from './reports.js';
 
 export function applySettingsToForm() {
   const s = state.settings;
@@ -168,6 +169,165 @@ async function _importBackup(e) {
   }
 }
 
+// ---- Sales Persons ----
+function _sortedSalesPersons() {
+  return (state.settings.salesPersons || []).slice()
+    .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+}
+
+export function renderSalesPersonsList() {
+  const box = $('#sp-list');
+  if (!box) return;
+  const list = _sortedSalesPersons();
+  if (!list.length) {
+    box.innerHTML = `<div class="p-4 text-sm text-gray-400 text-center">No sales persons yet. Add one above.</div>`;
+    return;
+  }
+  box.innerHTML = list.map(sp => {
+    const active = sp.id === _spSummaryCurrentId;
+    return `
+      <div class="sp-row flex items-center gap-2 p-3 border-b cursor-pointer ${active ? 'bg-blue-50 border-l-4 border-l-blue-500' : 'hover:bg-gray-50'}" data-sp-view="${escapeAttr(sp.id)}">
+        <div class="flex-1 text-sm font-medium ${active ? 'text-blue-800' : 'text-gray-800'}">${escapeAttr(sp.name)}</div>
+        <button class="text-red-500 hover:text-red-700 text-xs px-1" data-sp-del="${escapeAttr(sp.id)}" title="Delete">✕</button>
+      </div>
+    `;
+  }).join('');
+  box.querySelectorAll('[data-sp-view]').forEach(b => b.addEventListener('click', (e) => {
+    if (e.target.closest('[data-sp-del]')) return; // clicking × doesn't open
+    _openSalesPersonSummary(b.dataset.spView);
+  }));
+  box.querySelectorAll('[data-sp-del]').forEach(b => b.addEventListener('click', (e) => {
+    e.stopPropagation();
+    _deleteSalesPerson(b.dataset.spDel);
+  }));
+}
+
+function escapeAttr(s) { return String(s || '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+
+async function _addSalesPerson() {
+  const name = ($('#sp-new-name').value || '').trim();
+  if (!name) return toast('Enter a name', 'error');
+  const list = state.settings.salesPersons || [];
+  if (list.some(sp => sp.name.toLowerCase() === name.toLowerCase())) {
+    return toast('Already exists', 'error');
+  }
+  const id = 'sp_' + Date.now().toString(36);
+  list.push({ id, name, createdAt: nowISO() });
+  state.settings.salesPersons = list;
+  await db.setSetting('salesPersons', list);
+  $('#sp-new-name').value = '';
+  renderSalesPersonsList();
+  document.dispatchEvent(new CustomEvent('toolbill:sales-persons-changed'));
+  toast(`Added ${name}`, 'success');
+}
+
+async function _deleteSalesPerson(id) {
+  const list = state.settings.salesPersons || [];
+  const sp   = list.find(x => x.id === id);
+  if (!sp) return;
+  if (!confirm(`Delete ${sp.name}? Past bills still keep the name.`)) return;
+  state.settings.salesPersons = list.filter(x => x.id !== id);
+  await db.setSetting('salesPersons', state.settings.salesPersons);
+  renderSalesPersonsList();
+  document.dispatchEvent(new CustomEvent('toolbill:sales-persons-changed'));
+  toast('Deleted', 'success');
+}
+
+function _todayISO() { return new Date().toISOString().slice(0, 10); }
+function _firstOfMonthISO() { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10); }
+function _lastOfMonthISO() { const d = new Date(); return new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().slice(0, 10); }
+
+let _spSummaryCurrentId = null;
+let _spSummaryCurrentName = '';
+
+async function _openSalesPersonSummary(id) {
+  const sp = (state.settings.salesPersons || []).find(x => x.id === id);
+  if (!sp) return;
+  _spSummaryCurrentId   = id;
+  _spSummaryCurrentName = sp.name;
+  $('#sp-summary-title').textContent = `Sales by ${sp.name}`;
+  // Default to this month on first selection; keep existing range otherwise
+  if (!$('#sp-from').value) $('#sp-from').value = _firstOfMonthISO();
+  if (!$('#sp-to').value)   $('#sp-to').value   = _lastOfMonthISO();
+  renderSalesPersonsList(); // re-render to highlight the active row
+  await _renderSalesPersonSummary();
+}
+
+async function _renderSalesPersonSummary() {
+  const stats = $('#sp-summary-stats');
+  const bills = $('#sp-summary-bills');
+  if (!stats || !bills) return;
+
+  if (!_spSummaryCurrentId) {
+    stats.innerHTML = '';
+    bills.innerHTML = `<div class="p-4 text-center text-gray-400 text-sm">Select a sales person from the list</div>`;
+    return;
+  }
+
+  const from = $('#sp-from').value;
+  const to   = $('#sp-to').value;
+  const invoices = await db.all('invoices');
+  const list = invoices.filter(inv =>
+    inv.salesPersonId === _spSummaryCurrentId &&
+    (!from || (inv.date || '').slice(0, 10) >= from) &&
+    (!to   || (inv.date || '').slice(0, 10) <= to)
+  ).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+  // Always use the ACTUAL (pre-scale-down) bill so worker commissions reflect
+  // real revenue — never the filed/scaled values.
+  const actualItems = (inv) => inv._gstOriginalItems || inv.items || [];
+  const actualPaid  = (inv) => inv._gstOriginalAmountPaid ?? inv.amountPaid;
+  const billCount = list.length;
+  const totalAmt  = list.reduce((s, i) => s + getActualTotal(i), 0);
+  const totalPaid = list.reduce((s, i) => {
+    const p = actualPaid(i);
+    return s + (p != null ? Number(p) : 0);
+  }, 0);
+  const itemCount = list.reduce((s, i) => s + actualItems(i).reduce((x, l) => x + (l.qty || 0), 0), 0);
+
+  const fmt = (n) => '₹' + (Number(n) || 0).toFixed(2);
+  stats.innerHTML = `
+    <div class="bg-gray-50 border rounded p-3">
+      <div class="text-[10px] text-gray-500 uppercase tracking-wide">Bills</div>
+      <div class="text-xl font-bold">${billCount}</div>
+    </div>
+    <div class="bg-gray-50 border rounded p-3">
+      <div class="text-[10px] text-gray-500 uppercase tracking-wide">Items sold</div>
+      <div class="text-xl font-bold">${itemCount}</div>
+    </div>
+    <div class="bg-blue-50 border border-blue-200 rounded p-3">
+      <div class="text-[10px] text-blue-700 uppercase tracking-wide">Total sales</div>
+      <div class="text-xl font-bold text-blue-700">${fmt(totalAmt)}</div>
+    </div>
+    <div class="bg-green-50 border border-green-200 rounded p-3">
+      <div class="text-[10px] text-green-700 uppercase tracking-wide">Amount paid</div>
+      <div class="text-xl font-bold text-green-700">${fmt(totalPaid)}</div>
+    </div>
+  `;
+
+  if (!list.length) {
+    bills.innerHTML = `<div class="p-4 text-center text-gray-400 text-sm">No bills in this range</div>`;
+    return;
+  }
+  bills.innerHTML = `
+    <table class="w-full text-sm">
+      <thead class="bg-gray-50 border-b text-xs uppercase text-gray-500 sticky top-0">
+        <tr><th class="text-left p-2">Invoice</th><th class="text-left p-2">Date</th><th class="text-left p-2">Customer</th><th class="text-right p-2">Total</th></tr>
+      </thead>
+      <tbody>
+        ${list.map(i => `
+          <tr class="border-b hover:bg-gray-50">
+            <td class="p-2 mono">${escapeAttr(i.invoiceNo)}</td>
+            <td class="p-2 text-xs">${new Date(i.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' })}</td>
+            <td class="p-2 text-xs">${escapeAttr(i.customerName || '')}</td>
+            <td class="p-2 text-right font-semibold">${fmt(getActualTotal(i))}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
 async function _resetAllData() {
   if (!confirm('ERASE all products, bills, stock, categories, drafts and settings?\nThis cannot be undone. Export a backup first.')) return;
   if (!confirm('Last chance. Really erase everything?')) return;
@@ -191,6 +351,19 @@ export function wireSettings() {
   $('#btn-save-settings').addEventListener('click', _saveSettings);
   $('#btn-save-users')?.addEventListener('click', _saveSettings);
   $('#btn-save-security')?.addEventListener('click', _saveSecurityQuestions);
+
+  // Password reveal toggles — click the eye to flip type between password/text
+  document.querySelectorAll('[data-toggle-pass]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const inp = document.getElementById(btn.dataset.togglePass);
+      if (!inp) return;
+      const isHidden = inp.type === 'password';
+      inp.type = isHidden ? 'text' : 'password';
+      btn.querySelector('.pass-eye-open')?.classList.toggle('hidden', isHidden);
+      btn.querySelector('.pass-eye-shut')?.classList.toggle('hidden', !isHidden);
+    });
+  });
+
   $('#btn-export').addEventListener('click', exportBackup);
   $('#import-file').addEventListener('change', _importBackup);
   $('#btn-reset').addEventListener('click', _resetAllData);
@@ -208,5 +381,27 @@ export function wireSettings() {
     }
   }
 
+  // Sales persons
+  $('#sp-add')?.addEventListener('click', _addSalesPerson);
+  $('#sp-new-name')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); _addSalesPerson(); } });
+  $('#sp-from')?.addEventListener('change', _renderSalesPersonSummary);
+  $('#sp-to')?.addEventListener('change', _renderSalesPersonSummary);
+  $('#sp-quick-month')?.addEventListener('click', () => {
+    $('#sp-from').value = _firstOfMonthISO();
+    $('#sp-to').value   = _lastOfMonthISO();
+    _renderSalesPersonSummary();
+  });
+  $('#sp-quick-today')?.addEventListener('click', () => {
+    const t = _todayISO();
+    $('#sp-from').value = t; $('#sp-to').value = t;
+    _renderSalesPersonSummary();
+  });
+
   registerTabRenderer('settings', applySettingsToForm);
+  registerTabRenderer('sales-persons', () => {
+    if ($('#sp-from') && !$('#sp-from').value) $('#sp-from').value = _firstOfMonthISO();
+    if ($('#sp-to')   && !$('#sp-to').value)   $('#sp-to').value   = _lastOfMonthISO();
+    renderSalesPersonsList();
+    _renderSalesPersonSummary();
+  });
 }

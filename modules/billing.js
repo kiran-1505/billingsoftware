@@ -18,22 +18,33 @@ export async function buildCustomerList() {
     if (key) seen.set(key, {
       name: c.name || '', phone: c.phone || '', gst: c.gst || '',
       stateCode: c.stateCode || (c.gst ? c.gst.slice(0, 2) : ''),
+      city: c.city || '', category: c.category || '',
       type: c.type || 'walkin',
     });
   }
+  // Newer invoices overwrite older customer-record data (they're more recent)
   for (const inv of [...invoices].sort((a, b) => (b.date || '').localeCompare(a.date || ''))) {
     const name  = (inv.customerName  || '').trim();
     const phone = (inv.customerPhone || '').trim();
     const gst   = (inv.customerGst   || '').trim().toUpperCase();
     const stateCode = inv.customerStateCode || (gst ? gst.slice(0, 2) : '');
+    const city  = (inv.customerCity || '').trim();
+    const category = (inv.customerCategory || '').trim();
     if (!name && !phone && !gst) continue;
     const key = (phone || gst || name).toLowerCase();
-    if (!seen.has(key)) seen.set(key, { name, phone, gst, stateCode, type: inv.customerType || (gst ? 'gst' : 'walkin') });
+    if (!seen.has(key)) {
+      seen.set(key, { name, phone, gst, stateCode, city, category, type: inv.customerType || (gst ? 'gst' : 'walkin') });
+    } else {
+      // Fill missing fields from latest invoice (don't overwrite a non-empty stored value)
+      const ex = seen.get(key);
+      if (!ex.city && city) ex.city = city;
+      if (!ex.category && category) ex.category = category;
+    }
   }
   _customerList = Array.from(seen.values());
 }
 
-export async function upsertCustomer(name, phone, gst, type, stateCode) {
+export async function upsertCustomer(name, phone, gst, type, stateCode, city, category) {
   if (!name && !phone && !gst) return;
   const customers = await db.all('customers');
   const existing = customers.find(c =>
@@ -47,12 +58,15 @@ export async function upsertCustomer(name, phone, gst, type, stateCode) {
     if (phone) existing.phone = phone;
     if (gst)   existing.gst   = gst;
     if (stateCode) existing.stateCode = stateCode;
+    if (city)     existing.city     = city;
+    if (category) existing.category = category;
     existing.type = type || existing.type;
     existing.updatedAt = now;
     await db.put('customers', existing);
   } else {
     await db.add('customers', {
       name, phone, gst, stateCode: stateCode || null,
+      city: city || null, category: category || null,
       type: type || 'walkin', createdAt: now, updatedAt: now,
     });
   }
@@ -61,7 +75,7 @@ export async function upsertCustomer(name, phone, gst, type, stateCode) {
 // Detect GST customer from the GST field value:
 // - any non-whitespace content → GST customer
 // - 2 or more spaces → GST customer (quick marker when number not available)
-export function isGstFromField() {
+function isGstFromField() {
   const raw = $('#customer-gst').value;
   return raw.trim().length > 0 || (raw.match(/ /g) || []).length >= 2;
 }
@@ -143,9 +157,6 @@ function showCustomerSuggestions(inputEl, dd, fieldId) {
 function fillCustomer(c) {
   $('#customer-name').value  = c.name  || '';
   $('#customer-phone').value = c.phone || '';
-  // If the saved customer has an actual GSTIN, drop it in.
-  // If they were a GST customer with no GSTIN (3-space marker), inject 3 spaces
-  // so the green border is restored and the next save re-marks them as GST.
   if (c.gst) {
     $('#customer-gst').value = c.gst;
   } else if (c.type === 'gst') {
@@ -153,6 +164,8 @@ function fillCustomer(c) {
   } else {
     $('#customer-gst').value = '';
   }
+  if ($('#customer-city'))     $('#customer-city').value     = c.city     || '';
+  if ($('#customer-category')) $('#customer-category').value = c.category || '';
   const type = (c.gst || c.type === 'gst') ? 'gst' : (c.type || 'walkin');
   setCustomerType(type);
   state.customerType = type;
@@ -527,6 +540,11 @@ export async function saveDraftFromCart() {
   const customerName  = $('#customer-name').value.trim();
   const customerPhone = $('#customer-phone').value.trim();
   const customerGst   = $('#customer-gst').value.trim().toUpperCase();
+  const customerCity     = $('#customer-city')?.value.trim() || '';
+  const customerCategory = $('#customer-category')?.value.trim() || '';
+  const salesPersonId    = $('#sales-person')?.value || '';
+  const sp = (state.settings.salesPersons || []).find(x => x.id === salesPersonId);
+  const salesPersonName  = sp ? sp.name : null;
   const amountPaidRaw = $('#amount-paid').value.trim();
   const amountPaid    = amountPaidRaw === '' ? null : parseFloat(amountPaidRaw);
   const notes = $('#bill-notes').value.trim();
@@ -535,6 +553,8 @@ export async function saveDraftFromCart() {
     customerType: state.customerType,
     customerName: customerName || null, customerPhone: customerPhone || null,
     customerGst: customerGst || null,
+    customerCity: customerCity || null, customerCategory: customerCategory || null,
+    salesPersonId: salesPersonId || null, salesPersonName,
     amountPaid, notes: notes || '',
   };
   try {
@@ -600,6 +620,9 @@ async function _loadDraft(id) {
   $('#customer-name').value  = d.customerName  || '';
   $('#customer-phone').value = d.customerPhone || '';
   $('#customer-gst').value   = d.customerGst   || '';
+  if ($('#customer-city'))     $('#customer-city').value     = d.customerCity     || '';
+  if ($('#customer-category')) $('#customer-category').value = d.customerCategory || '';
+  if ($('#sales-person'))      $('#sales-person').value      = d.salesPersonId    || '';
   $('#amount-paid').value    = d.amountPaid != null ? String(d.amountPaid) : '';
   $('#bill-notes').value     = d.notes || '';
   setActiveDraft(d.id, `#${d.id}`);
@@ -628,6 +651,11 @@ export async function saveAndPrintBill() {
   const total         = state.cart.reduce((sum, l) => sum + l.qty * l.price, 0);
   const customerName  = $('#customer-name').value.trim();
   const customerPhone = $('#customer-phone').value.trim();
+  const customerCity     = $('#customer-city')?.value.trim() || '';
+  const customerCategory = $('#customer-category')?.value.trim() || '';
+  const salesPersonId    = $('#sales-person')?.value || '';
+  const sp = (state.settings.salesPersons || []).find(x => x.id === salesPersonId);
+  const salesPersonName  = sp ? sp.name : null;
   const rawGst        = $('#customer-gst').value;
   const customerGst   = rawGst.trim().toUpperCase();
   const spaceCount    = (rawGst.match(/ /g) || []).length;
@@ -637,8 +665,6 @@ export async function saveAndPrintBill() {
   const amountPaid    = amountPaidRaw === '' ? null : parseFloat(amountPaidRaw);
   const notes         = $('#bill-notes').value.trim();
   const noGW          = $('#toggle-no-gw').checked || null;
-  // Only the armature/motor warranty is editable from the cart UI now.
-  // warrantyMonths is kept null for new bills (legacy bills keep their value via the renderer).
   const warrantyMonths = null;
   const armatureMonths = $('#toggle-armature')?.checked
     ? (parseInt($('#armature-months').value) || null) : null;
@@ -647,6 +673,8 @@ export async function saveAndPrintBill() {
     customerType,
     customerName: customerName || null, customerPhone: customerPhone || null,
     customerGst: customerGst || null,
+    customerCity: customerCity || null, customerCategory: customerCategory || null,
+    salesPersonId: salesPersonId || null, salesPersonName,
     items: state.cart.map(l => ({ ...l })),
     subtotal: total, total, amountPaid,
     noGW, warrantyMonths, armatureMonths,
@@ -681,6 +709,9 @@ export async function saveAndPrintBill() {
     $('#customer-name').value  = '';
     $('#customer-phone').value = '';
     $('#customer-gst').value   = '';
+    if ($('#customer-city'))     $('#customer-city').value     = '';
+    if ($('#customer-category')) $('#customer-category').value = '';
+    if ($('#sales-person'))      $('#sales-person').value      = '';
     $('#amount-paid').value    = '';
     $('#bill-notes').value     = '';
     $('#toggle-no-gw').checked = false;
@@ -690,7 +721,7 @@ export async function saveAndPrintBill() {
     renderDrafts();
     renderSellPane();
     if (customerName || customerPhone || customerGst) {
-      await upsertCustomer(customerName, customerPhone, customerGst, customerType);
+      await upsertCustomer(customerName, customerPhone, customerGst, customerType, undefined, customerCity, customerCategory);
     }
     buildCustomerList();
     toast('Bill ' + invoiceNo + ' saved', 'success');
@@ -902,6 +933,115 @@ function _renderGSTInvoice(invoice, s) {
     </div>`;
 }
 
+// ---- Sales person <select> population ----
+export function populateSalesPersonSelect() {
+  const sel = $('#sales-person');
+  if (!sel) return;
+  const prev = sel.value;
+  const list = (state.settings.salesPersons || []).slice()
+    .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  sel.innerHTML =
+    `<option value="">Sales person</option>` +
+    list.map(sp => `<option value="${escapeHTML(sp.id)}">${escapeHTML(sp.name)}</option>`).join('');
+  if (list.some(sp => sp.id === prev)) sel.value = prev;
+}
+
+// ---- Customer-category dropdown (typeable, filtered, with + New) ----
+let _ccDdActive = -1;
+
+function _renderCustomerCategoryDropdown() {
+  const dd = $('#customer-category-dropdown');
+  if (!dd) return;
+  const q = ($('#customer-category').value || '').trim().toLowerCase();
+  const all = (state.settings.customerCategories || []).slice().sort((a, b) => a.localeCompare(b));
+  const matches = all.filter(c => !q || c.toLowerCase().includes(q));
+  if (!matches.length) {
+    dd.innerHTML = q
+      ? `<div class="px-3 py-2 text-gray-500">No matches — click <strong>+</strong> to add "<strong>${escapeHTML(q)}</strong>"</div>`
+      : `<div class="px-3 py-2 text-gray-400">No customer categories yet — type one and click <strong>+</strong></div>`;
+    dd.classList.remove('hidden');
+    _ccDdActive = -1;
+    return;
+  }
+  if (_ccDdActive >= matches.length) _ccDdActive = matches.length - 1;
+  dd.innerHTML = matches.map((c, idx) => `
+    <div class="cc-dd-row flex items-center ${idx === _ccDdActive ? 'bg-blue-100' : 'hover:bg-gray-100'}">
+      <div class="cc-dd-item flex-1 px-3 py-2 cursor-pointer" data-cc-name="${escapeHTML(c)}">${escapeHTML(c)}</div>
+      <button type="button" class="cc-dd-del px-2 py-2 text-red-500 hover:bg-red-50 text-base leading-none" title="Delete category" data-cc-del="${escapeHTML(c)}">&times;</button>
+    </div>
+  `).join('');
+  dd.classList.remove('hidden');
+  dd.querySelectorAll('[data-cc-name]').forEach(el => {
+    el.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      $('#customer-category').value = el.dataset.ccName;
+      _closeCustomerCategoryDropdown();
+    });
+  });
+  dd.querySelectorAll('[data-cc-del]').forEach(el => {
+    el.addEventListener('mousedown', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      await _deleteCustomerCategory(el.dataset.ccDel);
+    });
+  });
+}
+
+async function _deleteCustomerCategory(name) {
+  if (!name) return;
+  if (!confirm(`Delete customer category "${name}"?\nExisting bills/customers with this category will keep the name.`)) return;
+  const list = (state.settings.customerCategories || []).filter(c => c !== name);
+  state.settings.customerCategories = list;
+  await db.setSetting('customerCategories', list);
+  // If the input currently holds the deleted name, clear it so the user picks again
+  if (($('#customer-category').value || '').trim().toLowerCase() === name.toLowerCase()) {
+    $('#customer-category').value = '';
+  }
+  _renderCustomerCategoryDropdown();
+  toast(`Deleted "${name}"`, 'success');
+}
+function _closeCustomerCategoryDropdown() {
+  const dd = $('#customer-category-dropdown');
+  if (dd) dd.classList.add('hidden');
+  _ccDdActive = -1;
+}
+function _handleCustomerCategoryKey(e) {
+  const dd = $('#customer-category-dropdown');
+  if (!dd || dd.classList.contains('hidden')) return;
+  const items = Array.from(dd.querySelectorAll('[data-cc-name]'));
+  if (e.key === 'ArrowDown') { e.preventDefault(); _ccDdActive = Math.min(items.length - 1, _ccDdActive + 1); _renderCustomerCategoryDropdown(); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); _ccDdActive = Math.max(0, _ccDdActive - 1); _renderCustomerCategoryDropdown(); }
+  else if (e.key === 'Enter' && _ccDdActive >= 0 && items[_ccDdActive]) { e.preventDefault(); $('#customer-category').value = items[_ccDdActive].dataset.ccName; _closeCustomerCategoryDropdown(); }
+  else if (e.key === 'Escape') _closeCustomerCategoryDropdown();
+}
+
+// "+" button: take whatever the user has typed in the customer-category
+// input and save it as a new category. If the input is empty, just focus
+// it so they can type. If it already exists, select it without erroring.
+async function _addCustomerCategoryFromInput() {
+  const input = $('#customer-category');
+  if (!input) return;
+  const name = (input.value || '').trim();
+  if (!name) {
+    input.focus();
+    _renderCustomerCategoryDropdown();
+    return;
+  }
+  const list = state.settings.customerCategories || [];
+  const existing = list.find(c => c.toLowerCase() === name.toLowerCase());
+  if (existing) {
+    input.value = existing;
+    _closeCustomerCategoryDropdown();
+    return;
+  }
+  list.push(name);
+  state.settings.customerCategories = list;
+  await db.setSetting('customerCategories', list);
+  input.value = name;
+  _closeCustomerCategoryDropdown();
+  toast(`Added "${name}"`, 'success');
+}
+
 // ---- Wire ----
 export function wireBilling() {
   const input = $('#bill-search');
@@ -925,9 +1065,57 @@ export function wireBilling() {
   $('#toggle-armature')?.addEventListener('change', () => {
     $('#armature-months').classList.toggle('hidden', !$('#toggle-armature').checked);
   });
+
+  // Customer category dropdown
+  const ccInput = $('#customer-category');
+  if (ccInput) {
+    ccInput.addEventListener('focus', _renderCustomerCategoryDropdown);
+    ccInput.addEventListener('input', () => { _ccDdActive = -1; _renderCustomerCategoryDropdown(); });
+    ccInput.addEventListener('keydown', _handleCustomerCategoryKey);
+    ccInput.addEventListener('blur', () => setTimeout(_closeCustomerCategoryDropdown, 150));
+  }
+  $('#cc-new-btn')?.addEventListener('click', _addCustomerCategoryFromInput);
+
+  // Sales person select — keep options in sync with settings
+  populateSalesPersonSelect();
+  document.addEventListener('toolbill:sales-persons-changed', populateSalesPersonSelect);
   $('#btn-clear-cart').addEventListener('click', () => {
-    if (!state.cart.length) return;
-    if (confirm('Clear cart?')) { state.cart = []; detachActiveDraft(); renderCart(); }
+    // Allow clearing even if the cart is empty — the user may want to drop
+    // a half-typed customer or stale draft customer details.
+    const hasItems = state.cart.length > 0;
+    const hasCustomer =
+      ($('#customer-name').value || '').trim() ||
+      ($('#customer-phone').value || '').trim() ||
+      ($('#customer-gst').value || '').trim() ||
+      ($('#customer-city')?.value || '').trim() ||
+      ($('#customer-category')?.value || '').trim() ||
+      ($('#amount-paid').value || '').trim() ||
+      ($('#bill-notes').value || '').trim() ||
+      $('#toggle-no-gw')?.checked ||
+      $('#toggle-armature')?.checked ||
+      ($('#sales-person')?.value || '');
+    if (!hasItems && !hasCustomer) return;
+    if (!confirm('Clear cart and customer details?')) return;
+
+    state.cart = [];
+    detachActiveDraft();
+    // Reset customer + footer fields
+    setCustomerType('walkin');
+    state.customerType = 'walkin';
+    $('#customer-name').value  = '';
+    $('#customer-phone').value = '';
+    $('#customer-gst').value   = '';
+    if ($('#customer-city'))     $('#customer-city').value     = '';
+    if ($('#customer-category')) $('#customer-category').value = '';
+    if ($('#sales-person'))      $('#sales-person').value      = '';
+    $('#amount-paid').value = '';
+    $('#bill-notes').value  = '';
+    if ($('#toggle-no-gw'))   $('#toggle-no-gw').checked  = false;
+    if ($('#toggle-armature')) {
+      $('#toggle-armature').checked = false;
+      if ($('#armature-months')) { $('#armature-months').value = ''; $('#armature-months').classList.add('hidden'); }
+    }
+    renderCart();
   });
   $('#btn-save-print').addEventListener('click', saveAndPrintBill);
   $('#btn-save-draft').addEventListener('click', saveDraftFromCart);

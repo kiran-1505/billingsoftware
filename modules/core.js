@@ -29,6 +29,11 @@ export const DEFAULT_SETTINGS = {
   securityBirthplace: '', // answer to "What is your birth place?"
   securityQuestion:   '', // user-defined recovery question
   securityAnswer:     '', // answer to the user-defined question
+  // Customer category list (e.g. "2 Wheeler Mechanic", "Welder"). Editable from
+  // the cart inline "+ New" form and surfaces in the customer-category dropdown.
+  customerCategories: [],
+  // Sales persons — admin manages from Settings. Each: { id, name, createdAt }
+  salesPersons: [],
 };
 
 // ---- State ----
@@ -44,7 +49,6 @@ export const state = {
   currentUser: null,
   selectedLabels: new Set(),
   showLowOnly: false,
-  bulkPreview: null,
   grnTarget: null,
   adjTarget: null,
   currentProductsCategory: null,

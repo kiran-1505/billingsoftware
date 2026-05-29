@@ -17,7 +17,7 @@ export function applyUserState() {
     const tab = btn.dataset.tab;
     const always    = ['billing', 'products', 'labels'].includes(tab);
     const anyUser   = tab === 'reports';
-    const user2Only = ['inventory', 'daily', 'settings'].includes(tab);
+    const user2Only = ['inventory', 'daily', 'settings', 'sales-persons'].includes(tab);
     if (always)         btn.style.display = '';
     else if (anyUser)   btn.style.display = u ? '' : 'none';
     else if (user2Only) btn.style.display = u === 'user2' ? '' : 'none';
@@ -47,6 +47,11 @@ export function applyUserState() {
 
   const securitySection = $('#security-section');
   if (securitySection) securitySection.classList.toggle('hidden', u !== 'user2');
+
+  // Sales-person dropdown on the cart is available to everyone — picking who
+  // sold the item is not an admin-only action. The management UI lives on
+  // its own admin-only Sales Persons tab (handled by the tab-visibility
+  // logic above; no separate section in Settings).
 
   // Notify modules that depend on user role (e.g. cart cost-code column)
   document.dispatchEvent(new CustomEvent('toolbill:user-changed'));

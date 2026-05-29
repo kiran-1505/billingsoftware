@@ -469,58 +469,153 @@ textarea:focus {
   body > *:not(.print-area) { display: none !important; }
   .print-area { display: block !important; }
 
+  /* ── Label sheet layouts ──
+     A4 portrait = 210 × 297 mm. With 8 mm @page margin the printable area is
+     194 × 281 mm. Each layout below sets:
+       - Outer container padding = 0 (page margins handle white-space)
+       - Exact grid-template-columns
+       - Fixed grid-auto-rows so each cell is the correct mm height
+       - No gap between cells so they align to standard Avery-style sheets
+  */
   .print-labels {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 3mm; padding: 5mm;
+    gap: 0; padding: 0; margin: 0;
+    width: 100%;
   }
   .print-labels .label-card {
-    border: none; padding: 2mm;
+    border: none; padding: 1.5mm;
+    box-sizing: border-box;
     page-break-inside: avoid; break-inside: avoid;
+    /* overflow stays visible so no field can disappear from a cell */
+    overflow: visible;
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; text-align: center;
   }
-  .print-labels .label-card .name { font-size: 10pt; }
-  .print-labels .label-card .shortcode { font-size: 9pt; }
-  .print-labels .label-card .mrp {
-    font-size: 11pt; font-weight: 700;
-    background: transparent; padding: 0;
-    border-top: 1px solid #000; width: 100%;
-    text-align: center; margin-top: 2px;
+  /* Show cutting borders only when the user asks for them */
+  .print-labels.with-borders .label-card {
+    border: 0.3pt solid #999;
   }
-  .print-labels .label-card svg,
-  .print-labels .label-card canvas,
-  .print-labels .label-card img { max-width: 100%; height: auto; }
 
-  /* Detailed label: name + MRP + Our Price (bold) + Code + ShortCode */
-  .print-labels.detailed { grid-template-columns: repeat(3, 1fr); }
-  .print-labels .detailed-label {
-    text-align: center; color: #000; padding: 3mm 2mm;
-    page-break-inside: avoid; break-inside: avoid;
+  /* Sheet templates — BASIC labels (small content) use fixed cell height so
+     stickers align with pre-cut sheets.
+     DETAILED labels (more rows) override to auto-height — see below. */
+  .print-labels.layout-3x8  { grid-template-columns: repeat(3, 1fr); grid-auto-rows: 35.1mm; }
+  .print-labels.layout-5x13 { grid-template-columns: repeat(5, 1fr); grid-auto-rows: 21.6mm; }
+  .print-labels.layout-4x12 { grid-template-columns: repeat(4, 1fr); grid-auto-rows: 23.4mm; }
+  .print-labels.layout-2x7  { grid-template-columns: repeat(2, 1fr); grid-auto-rows: 40.1mm; }
+  .print-labels.layout-3x10 { grid-template-columns: repeat(3, 1fr); grid-auto-rows: 28.1mm; }
+  .print-labels.layout-1x1  { grid-template-columns: 1fr;            grid-auto-rows: 281mm; padding: 2mm; }
+  .print-labels.layout-fit  { grid-template-columns: repeat(3, 1fr); grid-auto-rows: auto; gap: 2mm; padding: 3mm; }
+
+  /* Detailed labels need taller cells — override to auto-height so every
+     row (name, MRP, Our Price, codes, barcode, shortcode) prints fully. */
+  .print-labels.detailed { grid-auto-rows: auto !important; gap: 2mm; padding: 3mm; }
+
+  /* ── Basic label content sizing per layout ── */
+  .print-labels .label-card .name {
+    font-size: 9pt; font-weight: 600; line-height: 1.1;
+    max-height: 2.4em; overflow: hidden;
   }
+  .print-labels .label-card .codes {
+    display: flex; align-items: center; justify-content: center; gap: 2mm;
+    width: 100%;
+  }
+  .print-labels .label-card img { max-width: 100%; height: auto; display: block; }
+  .print-labels .label-card .shortcode {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 8pt; letter-spacing: 0.05em;
+  }
+  .print-labels .label-card .mrp {
+    font-size: 11pt; font-weight: 800;
+    background: transparent; padding: 0;
+    width: 100%; text-align: center;
+    border-top: 0.5pt solid #000; margin-top: 1mm;
+  }
+
+  /* Small sheets — shrink everything */
+  .print-labels.layout-5x13 .label-card,
+  .print-labels.layout-4x12 .label-card { padding: 0.8mm; }
+  .print-labels.layout-5x13 .label-card .name,
+  .print-labels.layout-4x12 .label-card .name { font-size: 7pt; max-height: 2.2em; }
+  .print-labels.layout-5x13 .label-card .shortcode,
+  .print-labels.layout-4x12 .label-card .shortcode { font-size: 6.5pt; }
+  .print-labels.layout-5x13 .label-card .mrp,
+  .print-labels.layout-4x12 .label-card .mrp { font-size: 8pt; }
+  .print-labels.layout-5x13 .label-card .codes img,
+  .print-labels.layout-4x12 .label-card .codes img { height: 18px; }
+  .print-labels.layout-5x13 .label-card .lbl-qr,
+  .print-labels.layout-4x12 .label-card .lbl-qr { display: none; }
+
+  /* Large sheets — bigger fonts */
+  .print-labels.layout-2x7 .label-card .name { font-size: 12pt; }
+  .print-labels.layout-2x7 .label-card .shortcode { font-size: 10pt; }
+  .print-labels.layout-2x7 .label-card .mrp { font-size: 16pt; }
+  .print-labels.layout-2x7 .label-card .codes img { height: 60px; }
+
+  .print-labels.layout-1x1 .label-card .name { font-size: 28pt; }
+  .print-labels.layout-1x1 .label-card .shortcode { font-size: 18pt; }
+  .print-labels.layout-1x1 .label-card .mrp { font-size: 36pt; }
+  .print-labels.layout-1x1 .label-card .codes img { height: 120px; }
+
+  /* ── Detailed label ──
+     Auto-height cells (set above) mean every row prints fully. We just need
+     compact spacing so 6+ rows still fit on a reasonable-sized cell.
+  */
+  .print-labels .detailed-label {
+    text-align: center; color: #000; padding: 2mm 1.5mm;
+    overflow: visible !important;
+    justify-content: flex-start !important;
+    align-items: stretch !important;
+    gap: 0.7mm;
+    min-height: 0;
+  }
+  .print-labels .detailed-label > * { width: 100%; }
+  .print-labels .detailed-label .dl-name { margin-bottom: 0.5mm; }
+  /* Code row: NEVER collapse — keep both halves visible even if one is empty */
+  .print-labels .detailed-label .dl-codes {
+    display: flex; justify-content: space-between; align-items: baseline;
+    padding: 0 1mm; gap: 3mm; min-height: 9pt;
+  }
+  .print-labels .detailed-label .dl-codes .dl-fx { text-align: left; flex: 1; }
+  .print-labels .detailed-label .dl-codes .dl-cc { text-align: right; flex: 1; }
   .print-labels .detailed-label .dl-name {
-    font-size: 10pt; font-weight: 600;
-    margin-bottom: 2mm; line-height: 1.2;
+    font-size: 9pt; font-weight: 700; line-height: 1.15;
+    max-height: 2.4em; overflow: hidden;
   }
   .print-labels .detailed-label .dl-mrp {
-    font-size: 12pt; font-weight: 800;
-    margin: 1mm 0;
+    font-size: 11pt; font-weight: 800;
+    margin: 0.5mm 0;
   }
-  .print-labels .detailed-label .dl-lbl { font-size: 9pt; }
+  .print-labels .detailed-label .dl-lbl { font-size: 8pt; font-weight: 500; }
   .print-labels .detailed-label .dl-val { font-weight: 800; }
   .print-labels .detailed-label .dl-line {
-    font-size: 9pt; margin: 1mm 0;
+    font-size: 8pt; margin: 0.5mm 0;
   }
   .print-labels .detailed-label .dl-cap {
-    font-size: 8pt; color: #444; letter-spacing: 1px;
+    font-size: 7pt; color: #555; letter-spacing: 1px;
   }
   .print-labels .detailed-label .dl-mono {
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 10pt;
+    font-size: 8.5pt;
   }
-  /* Row that holds the fixed-price code (left) and "Code: xxx" (right) */
   .print-labels .detailed-label .dl-codes {
     display: flex; justify-content: space-between; align-items: baseline;
-    padding: 0 1mm; gap: 4mm;
+    padding: 0 1mm; gap: 3mm;
   }
+  /* Detailed on small sheets */
+  .print-labels.detailed.layout-5x13 .detailed-label .dl-name,
+  .print-labels.detailed.layout-4x12 .detailed-label .dl-name { font-size: 7pt; }
+  .print-labels.detailed.layout-5x13 .detailed-label .dl-mrp,
+  .print-labels.detailed.layout-4x12 .detailed-label .dl-mrp { font-size: 8pt; }
+  /* Detailed on large sheets */
+  .print-labels.detailed.layout-2x7 .detailed-label .dl-name { font-size: 12pt; }
+  .print-labels.detailed.layout-2x7 .detailed-label .dl-mrp { font-size: 16pt; }
+  .print-labels.detailed.layout-1x1 .detailed-label .dl-name { font-size: 28pt; }
+  .print-labels.detailed.layout-1x1 .detailed-label .dl-mrp { font-size: 36pt; }
+
+  /* Use zero @page margin for sheet templates so cells align exactly to the
+     sheet edges. The browser print dialog "no margins" should be selected. */
+  @page { margin: 8mm; }
 }
 
 /* ── Bigger tap targets on touch devices ────────────── */
@@ -578,3 +673,703 @@ textarea:focus {
 .stock-low { color: #dc2626; font-weight: 600; }
 .stock-ok  { color: #16a34a; }
 .no-scroll { overflow: hidden; }
+
+
+/* =============================================================
+   ── Modern UI pass — billing screen polish (visual only) ──
+   ============================================================= */
+
+/* Panels: softer shadows, slightly rounder corners */
+.sell-cart-panel,
+.sell-picker-panel {
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(15,23,42,0.04), 0 8px 24px -8px rgba(15,23,42,0.08);
+  border: 1px solid #f1f5f9;
+}
+
+/* Section headers on both panels */
+.sell-cart-panel > .p-3,
+.sell-picker-panel > .p-3 {
+  padding: 0.85rem 1rem;
+}
+
+/* ── Customer block — softer card feel ── */
+.sell-cart-panel > .border-b.bg-gray-50 {
+  background: linear-gradient(180deg, #fafbfc 0%, #f3f4f6 100%);
+  padding: 0.85rem 1rem;
+}
+
+/* GST field — keep colour cue, soften focus */
+#customer-gst { transition: border-color 0.2s, background-color 0.2s, box-shadow 0.2s; }
+#customer-gst:focus { box-shadow: 0 0 0 3px rgba(37,99,235,0.12); }
+
+/* Customer fields default focus ring */
+#customer-name:focus,
+#customer-phone:focus,
+#customer-city:focus,
+#customer-category:focus,
+#amount-paid:focus,
+#bill-notes:focus,
+#sell-pane-search:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37,99,235,0.10);
+}
+
+/* ── Cart items table — zebra + row hover ── */
+.sell-cart-scroll table tbody tr {
+  transition: background 0.12s;
+}
+.sell-cart-scroll table tbody tr:hover {
+  background: #f8fafc;
+}
+.sell-cart-scroll table tbody tr td {
+  border-bottom: 1px solid #f1f5f9;
+  padding: 8px 4px;
+}
+.sell-cart-scroll table thead th {
+  position: sticky; top: 0;
+  background: #fff;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #64748b;
+  font-weight: 600;
+  padding: 8px 4px;
+  border-bottom: 1px solid #e2e8f0;
+  z-index: 1;
+}
+
+/* Empty-cart state — gentle look */
+.sell-cart-scroll table tbody tr td[colspan] {
+  color: #94a3b8;
+  font-style: italic;
+}
+
+/* ── Footer (totals + actions) — modern card feel ── */
+.sell-cart-panel > .border-t.bg-gray-50 {
+  background: linear-gradient(180deg, #fafbfc 0%, #f3f4f6 100%);
+  border-top: 1px solid #e5e7eb;
+  padding: 0.85rem 1rem 1rem;
+}
+
+/* Total payable headline */
+#cart-total {
+  letter-spacing: -0.02em;
+  text-shadow: 0 1px 0 rgba(255,255,255,0.4);
+}
+
+/* Cost code chip — softer pill */
+#cart-cost-code {
+  background: linear-gradient(180deg, #faf5ff 0%, #f3e8ff 100%);
+  border: 1px solid #d8b4fe !important;
+  letter-spacing: 0.1em;
+}
+
+/* ── Primary CTA: Save & Print ── */
+#btn-save-print {
+  background: linear-gradient(180deg, #2563eb 0%, #1d4ed8 100%);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.15) inset, 0 4px 14px -4px rgba(37,99,235,0.45);
+  letter-spacing: 0.01em;
+  transition: transform 0.08s, box-shadow 0.18s, filter 0.18s;
+}
+#btn-save-print:hover {
+  filter: brightness(1.05);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.15) inset, 0 6px 20px -4px rgba(37,99,235,0.55);
+}
+#btn-save-print:active { transform: translateY(1px); }
+
+/* Save Draft — secondary look */
+#btn-save-draft {
+  background: linear-gradient(180deg, #f59e0b 0%, #d97706 100%);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.18) inset, 0 3px 10px -3px rgba(217,119,6,0.4);
+  transition: transform 0.08s, filter 0.18s, box-shadow 0.18s;
+}
+#btn-save-draft:hover { filter: brightness(1.05); }
+#btn-save-draft:active { transform: translateY(1px); }
+
+/* Sales person select in the action row */
+#sales-person {
+  background: #fff;
+  border-color: #e2e8f0;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+#sales-person:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37,99,235,0.10);
+}
+
+/* ── Sell pane — search field with leading icon ── */
+#sell-pane-search {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='11' cy='11' r='8'/><line x1='21' y1='21' x2='16.65' y2='16.65'/></svg>");
+  background-repeat: no-repeat;
+  background-position: 8px center;
+  padding-left: 30px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+/* Cam scan button polish */
+.cam-scan-btn {
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  border: 1px solid #e2e8f0;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.08s;
+}
+.cam-scan-btn:hover {
+  border-color: #93c5fd;
+  box-shadow: 0 4px 12px -4px rgba(37,99,235,0.2);
+}
+.cam-scan-btn:active { transform: translateY(1px); }
+
+/* ── Sell pane product tile — modernized ── */
+.sell-prod-tile {
+  background: linear-gradient(180deg, #ffffff 0%, #fafafa 100%);
+  box-shadow: 0 1px 2px rgba(15,23,42,0.04);
+}
+.sell-prod-tile:hover {
+  background: #ffffff;
+  border-color: #60a5fa;
+  box-shadow: 0 6px 16px -4px rgba(37,99,235,0.18);
+  transform: translateY(-2px);
+}
+.sell-prod-tile img,
+.sell-prod-tile > div:first-child {
+  border-radius: 6px;
+  box-shadow: 0 1px 2px rgba(15,23,42,0.06);
+}
+
+/* Stock-low chip on tiles */
+.sell-prod-stock.low {
+  background: #fee2e2;
+  color: #b91c1c;
+  border-radius: 9999px;
+  padding: 1px 8px;
+  font-weight: 700;
+}
+
+/* "In cart" badge on tiles — more refined */
+.sell-prod-badge {
+  background: linear-gradient(180deg, #2563eb 0%, #1d4ed8 100%);
+  box-shadow: 0 2px 6px rgba(37,99,235,0.4), 0 0 0 2px #fff;
+}
+
+/* ── Category tiles — modernize ── */
+.sell-cat-tile {
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 2px rgba(15,23,42,0.03);
+}
+.sell-cat-tile:hover {
+  background: linear-gradient(180deg, #eff6ff 0%, #dbeafe 100%);
+  border-color: #60a5fa;
+  box-shadow: 0 6px 18px -6px rgba(37,99,235,0.2);
+  transform: translateY(-2px);
+}
+.sell-cat-tile-name { color: #0f172a; }
+.sell-cat-tile-meta { color: #64748b; }
+
+/* ── Toggle pills (No G/W/R, Armature) — polish ── */
+.sell-cart-panel input[type="checkbox"].peer ~ div:nth-of-type(1) {
+  transition: background-color 0.2s;
+}
+
+/* ── Tab bar — modernize active state ── */
+.tab-btn {
+  border-radius: 8px;
+  font-weight: 500;
+  transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+}
+.tab-btn[data-active="true"] {
+  box-shadow: 0 2px 8px -2px rgba(37,99,235,0.25);
+}
+
+/* Cart total label tightening */
+.sell-cart-panel .text-\[11px\].uppercase {
+  font-weight: 600;
+  color: #64748b !important;
+}
+
+
+/* =============================================================
+   ── Colourful pass — vibrant headers, accent chips, tabs ──
+   ============================================================= */
+
+/* Top nav — subtle blue tint behind the white surface */
+nav.shadow {
+  background: linear-gradient(180deg, #ffffff 0%, #f0f7ff 100%) !important;
+  border-bottom: 1px solid #dbeafe;
+}
+
+/* Top nav brand tile */
+#btn-home .w-8.h-8 {
+  background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%) !important;
+  box-shadow: 0 4px 14px -4px rgba(124,58,237,0.45);
+}
+
+/* Tabs — pill style with vibrant active state */
+.tab-btn {
+  padding: 0.5rem 0.9rem !important;
+  border-radius: 999px !important;
+  color: #475569;
+  background: transparent;
+  font-weight: 600;
+  transition: all 0.18s;
+}
+.tab-btn:hover {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+.tab-btn[data-active="true"] {
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  color: #fff !important;
+  box-shadow: 0 4px 14px -4px rgba(37,99,235,0.55);
+}
+
+/* Admin login button polish */
+.admin-login-btn {
+  border-radius: 999px !important;
+  background: linear-gradient(180deg, #ffffff 0%, #f1f5f9 100%);
+  border: 1px solid #cbd5e1 !important;
+  transition: all 0.18s;
+}
+.admin-login-btn:hover {
+  background: linear-gradient(180deg, #eff6ff 0%, #dbeafe 100%);
+  border-color: #93c5fd !important;
+}
+
+/* Panel headers — colored gradient strips with white text */
+.panel-header {
+  padding: 0.75rem 1rem;
+  border-radius: 12px 12px 0 0;
+  color: #ffffff;
+  position: relative;
+}
+.panel-header h3 {
+  color: #ffffff;
+  font-size: 0.98rem;
+  letter-spacing: 0.01em;
+}
+.panel-header-cart {
+  background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
+  box-shadow: 0 2px 8px -2px rgba(37,99,235,0.4);
+}
+.panel-header-picker {
+  background: linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%);
+  box-shadow: 0 2px 8px -2px rgba(124,58,237,0.4);
+}
+.panel-header-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px; height: 28px;
+  background: rgba(255,255,255,0.18);
+  border-radius: 8px;
+  color: #ffffff;
+}
+
+/* Chips inside coloured headers */
+.panel-chip {
+  background: rgba(255,255,255,0.22);
+  color: #ffffff;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 2px 9px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.panel-chip-amber {
+  background: #fde68a;
+  color: #78350f;
+}
+
+/* Links inside coloured headers */
+.panel-link-danger {
+  color: #fee2e2;
+  background: rgba(255,255,255,0.12);
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.2);
+  transition: background 0.15s, color 0.15s;
+}
+.panel-link-danger:hover { background: #fff; color: #b91c1c; }
+
+.panel-link-light {
+  color: #ffffff;
+  font-size: 0.78rem;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  opacity: 0.95;
+}
+.panel-link-light:hover { opacity: 1; }
+
+/* Override the old white-panel rounded-top so corners match new headers */
+.panel-cart, .panel-picker {
+  overflow: hidden;
+  border-radius: 14px;
+  border: 1px solid #e2e8f0;
+}
+
+/* Customer block stays where it is, but soften + brighten */
+.sell-cart-panel > .border-b.bg-gray-50 {
+  background: linear-gradient(180deg, #f0f9ff 0%, #e0f2fe 100%);
+  border-bottom: 1px solid #bae6fd;
+}
+
+/* Cart panel footer — distinct gradient so it pops from items */
+.sell-cart-panel > .border-t.bg-gray-50 {
+  background: linear-gradient(180deg, #fefce8 0%, #fef3c7 100%);
+  border-top: 1px solid #fde68a;
+}
+
+/* Total payable headline — vibrant blue */
+#cart-total {
+  color: #1e40af !important;
+  background: linear-gradient(90deg, #1e40af 0%, #2563eb 50%, #7c3aed 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Drafts chip in sell-pane header */
+#btn-open-drafts {
+  background: #fff7ed !important;
+  color: #9a3412 !important;
+  border-color: #fed7aa !important;
+  box-shadow: 0 2px 8px -3px rgba(234,88,12,0.25);
+}
+#btn-open-drafts:hover {
+  background: #fed7aa !important;
+}
+#btn-open-drafts span {
+  background: linear-gradient(180deg, #ea580c 0%, #c2410c 100%) !important;
+}
+
+/* Scan button — vibrant teal accent */
+.cam-scan-btn {
+  background: linear-gradient(180deg, #ffffff 0%, #ecfeff 100%);
+  border: 1px solid #a5f3fc !important;
+  color: #0e7490;
+  font-weight: 600;
+}
+.cam-scan-btn:hover {
+  background: linear-gradient(180deg, #cffafe 0%, #a5f3fc 100%);
+  border-color: #67e8f9 !important;
+  color: #155e75;
+}
+
+/* Sell pane body has a faint tint so tiles pop */
+.sell-pane-body { background: #fafbff; }
+
+/* Category tiles — soft gradient cards */
+.sell-cat-tile {
+  background: linear-gradient(135deg, #ffffff 0%, #f5f3ff 100%);
+  border: 1px solid #ddd6fe;
+}
+.sell-cat-tile:hover {
+  background: linear-gradient(135deg, #ede9fe 0%, #ddd6fe 100%);
+  border-color: #a78bfa;
+}
+.sell-cat-tile-name { color: #4c1d95; }
+.sell-cat-tile-meta { color: #7c3aed; }
+
+/* Product tiles — accent strip on the price */
+.sell-prod-price {
+  background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
+  color: #fff !important;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.8rem !important;
+  font-weight: 700;
+}
+
+/* Sales-person select in action row — neutral border */
+#sales-person {
+  border-color: #e2e8f0;
+  color: #475569;
+  font-weight: 500;
+}
+
+/* G&W toggles container — give it a soft surface */
+.sell-cart-panel .grid.grid-cols-2.gap-2 input[type="text"],
+.sell-cart-panel .grid.grid-cols-2.gap-2 input[type="tel"] {
+  background: #ffffff;
+}
+
+/* Customer section heading "CUSTOMER" — make it stand out */
+.sell-cart-panel > .border-b.bg-gray-50 .text-xs.font-semibold.text-gray-500 {
+  color: #0369a1 !important;
+}
+
+/* Active draft banner in footer — warmer */
+#active-draft-banner {
+  background: linear-gradient(180deg, #fef3c7 0%, #fde68a 100%);
+  border-color: #f59e0b;
+  color: #78350f;
+}
+
+/* Modal backdrop — slightly darker for more focus */
+.modal-backdrop { background: rgba(15,23,42,0.55); backdrop-filter: blur(2px); }
+
+/* Modal panels — softer rounded + shadow */
+.modal-panel {
+  border-radius: 14px;
+  box-shadow: 0 24px 48px -12px rgba(15,23,42,0.35), 0 0 0 1px rgba(255,255,255,0.4) inset;
+}
+
+/* Toggles — slightly bolder colors */
+#toggle-no-gw + div { background: #fecaca; }
+#toggle-no-gw:checked + div { background: linear-gradient(180deg, #ef4444 0%, #b91c1c 100%); }
+
+#toggle-armature + div { background: #ddd6fe; }
+#toggle-armature:checked + div { background: linear-gradient(180deg, #a855f7 0%, #7c3aed 100%); }
+
+/* Sell-pane footer area cleanup (Save Draft, Save & Print) — slight inner glow */
+#btn-save-print {
+  background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
+}
+#btn-save-print:hover { filter: brightness(1.07); }
+
+#btn-save-draft {
+  background: linear-gradient(135deg, #f59e0b 0%, #ea580c 100%);
+}
+
+/* Bottom helper text */
+.sell-cart-panel p.text-\[11px\] { color: #94a3b8 !important; }
+
+/* Bulk-add Excel-style grid */
+#bulk-grid { border-collapse: separate; border-spacing: 0; }
+#bulk-grid th, #bulk-grid td {
+  border-right: 1px solid #e5e7eb;
+  border-bottom: 1px solid #f1f5f9;
+}
+#bulk-grid th:last-child, #bulk-grid td:last-child { border-right: none; }
+#bulk-grid td { padding: 2px; }
+#bulk-grid tbody tr:hover td { background: #f8fafc; }
+.bulk-input {
+  width: 100%;
+  padding: 5px 7px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  font-size: 0.85rem;
+  background: transparent;
+  font-family: inherit;
+}
+.bulk-input:focus {
+  outline: none;
+  border-color: #2563eb;
+  background: #eff6ff;
+  box-shadow: 0 0 0 2px rgba(37,99,235,0.15);
+}
+.bulk-input.invalid {
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+.bulk-rownum {
+  background: #f9fafb;
+  color: #94a3b8;
+  font-size: 0.75rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.bulk-del-btn {
+  width: 26px; height: 26px;
+  border-radius: 4px;
+  color: #ef4444;
+  background: transparent;
+  border: none;
+  font-size: 1.1rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.bulk-del-btn:hover { background: #fef2f2; color: #b91c1c; }
+
+/* Password reveal toggle (eye icon) */
+.pass-toggle {
+  position: absolute; right: 6px; top: 50%;
+  transform: translateY(-50%);
+  width: 28px; height: 28px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: none; background: transparent; cursor: pointer;
+  color: #64748b; border-radius: 6px;
+  transition: background 0.12s, color 0.12s;
+}
+.pass-toggle:hover { background: #f1f5f9; color: #2563eb; }
+.pass-toggle svg { display: block; }
+.hidden { display: none !important; }
+
+
+/* =============================================================
+   ── Coloured headers for every other tab ──
+   ============================================================= */
+
+/* Per-tab gradients */
+.panel-header-products {
+  background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%);
+  box-shadow: 0 2px 8px -2px rgba(79,70,229,0.4);
+}
+.panel-header-inventory {
+  background: linear-gradient(135deg, #ea580c 0%, #9a3412 100%);
+  box-shadow: 0 2px 8px -2px rgba(234,88,12,0.4);
+}
+.panel-header-daily {
+  background: linear-gradient(135deg, #0891b2 0%, #155e75 100%);
+  box-shadow: 0 2px 8px -2px rgba(8,145,178,0.4);
+}
+.panel-header-labels {
+  background: linear-gradient(135deg, #db2777 0%, #9d174d 100%);
+  box-shadow: 0 2px 8px -2px rgba(219,39,119,0.4);
+}
+.panel-header-reports {
+  background: linear-gradient(135deg, #16a34a 0%, #166534 100%);
+  box-shadow: 0 2px 8px -2px rgba(22,163,74,0.4);
+}
+.panel-header-sp {
+  background: linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%);
+  box-shadow: 0 2px 8px -2px rgba(124,58,237,0.4);
+}
+.panel-header-settings {
+  background: linear-gradient(135deg, #475569 0%, #1e293b 100%);
+  box-shadow: 0 2px 8px -2px rgba(71,85,105,0.4);
+}
+
+/* All panel cards: clip the rounded header corners */
+.panel-card {
+  overflow: hidden;
+  border-radius: 14px;
+  border: 1px solid #e2e8f0;
+}
+
+/* Headings inside any coloured header read white + subtitle softer */
+.panel-header h2,
+.panel-header h3 { color: #ffffff !important; }
+
+/* Date and search inputs inside coloured headers — white surface, readable text */
+.panel-header input[type="text"],
+.panel-header input[type="date"],
+.panel-header input[type="month"],
+.panel-header input[type="number"],
+.panel-header input[type="search"],
+.panel-header select {
+  background: rgba(255,255,255,0.98);
+  color: #1e293b;
+  border: 0;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.08) inset;
+}
+.panel-header input::placeholder { color: #94a3b8; }
+
+/* Generic "light translucent" action button used inside coloured headers */
+.panel-action-light {
+  background: rgba(255,255,255,0.18);
+  color: #ffffff;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 5px 11px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.25);
+  transition: background 0.15s;
+}
+.panel-action-light:hover {
+  background: rgba(255,255,255,0.28);
+  color: #ffffff;
+}
+
+/* Existing buttons inside coloured headers — give them outlined-on-color treatment */
+.panel-header button.bg-blue-600,
+.panel-header button.bg-blue-700 {
+  background: rgba(255,255,255,0.18) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(255,255,255,0.32);
+}
+.panel-header button.bg-blue-600:hover,
+.panel-header button.bg-blue-700:hover {
+  background: rgba(255,255,255,0.30) !important;
+}
+.panel-header button.bg-gray-200,
+.panel-header button.bg-gray-300,
+.panel-header button.bg-gray-100 {
+  background: rgba(255,255,255,0.18) !important;
+  color: #ffffff !important;
+}
+.panel-header button.bg-gray-800,
+.panel-header button.bg-gray-900 {
+  background: rgba(0,0,0,0.22) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(255,255,255,0.18);
+}
+.panel-header button.bg-gray-800:hover,
+.panel-header button.bg-gray-900:hover {
+  background: rgba(0,0,0,0.32) !important;
+}
+.panel-header button.bg-green-600,
+.panel-header button.bg-green-700 {
+  background: linear-gradient(180deg, #22c55e 0%, #16a34a 100%) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(255,255,255,0.25);
+  box-shadow: 0 2px 8px -2px rgba(0,0,0,0.2);
+}
+.panel-header button.bg-yellow-500,
+.panel-header button.bg-yellow-600 {
+  background: linear-gradient(180deg, #fbbf24 0%, #d97706 100%) !important;
+  color: #1f2937 !important;
+  font-weight: 700;
+  border: 1px solid rgba(255,255,255,0.25);
+}
+.panel-header button.bg-red-600,
+.panel-header button.bg-red-700 {
+  background: linear-gradient(180deg, #ef4444 0%, #b91c1c 100%) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(255,255,255,0.25);
+}
+
+/* "Categories" / "Card" / "List" view toggles inside coloured headers */
+.panel-header .border.border-gray-300 {
+  border-color: rgba(255,255,255,0.32) !important;
+  background: transparent !important;
+}
+.panel-header .border.border-gray-300 button.bg-gray-800 {
+  background: rgba(255,255,255,0.85) !important;
+  color: #1e293b !important;
+  border: 0;
+}
+.panel-header .border.border-gray-300 button.bg-white {
+  background: rgba(255,255,255,0.0) !important;
+  color: #ffffff !important;
+}
+.panel-header .border.border-gray-300 button.bg-white:hover {
+  background: rgba(255,255,255,0.2) !important;
+}
+
+/* Customer / GST / Walk-in filter buttons in Reports header */
+.panel-header .rep-cust-filter-btn.bg-gray-800 {
+  background: rgba(255,255,255,0.95) !important;
+  color: #166534 !important;
+}
+.panel-header .rep-cust-filter-btn.bg-white {
+  background: transparent !important;
+  color: #ffffff !important;
+}
+.panel-header .rep-cust-filter-btn.bg-white:hover {
+  background: rgba(255,255,255,0.18) !important;
+}
+
+/* Reports stat cards — color the GST/walk-in ones a bit brighter */
+#tab-reports .grid .bg-white {
+  border: 1px solid #e2e8f0;
+}
+
+/* Top nav active-tab uses different accent depending on which tab is active */
+.tab-btn[data-tab="products"][data-active="true"]  { background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%); }
+.tab-btn[data-tab="inventory"][data-active="true"] { background: linear-gradient(135deg, #ea580c 0%, #9a3412 100%); }
+.tab-btn[data-tab="daily"][data-active="true"]     { background: linear-gradient(135deg, #0891b2 0%, #155e75 100%); }
+.tab-btn[data-tab="labels"][data-active="true"]    { background: linear-gradient(135deg, #db2777 0%, #9d174d 100%); }
+.tab-btn[data-tab="reports"][data-active="true"]   { background: linear-gradient(135deg, #16a34a 0%, #166534 100%); }
+.tab-btn[data-tab="sales-persons"][data-active="true"] { background: linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%); }
+.tab-btn[data-tab="settings"][data-active="true"]  { background: linear-gradient(135deg, #475569 0%, #1e293b 100%); }
+

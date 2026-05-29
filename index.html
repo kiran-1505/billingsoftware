@@ -36,6 +36,7 @@
         <button class="tab-btn" data-tab="daily">Daily Sales</button>
         <button class="tab-btn" data-tab="labels">Labels</button>
         <button class="tab-btn" data-tab="reports">Reports</button>
+        <button class="tab-btn" data-tab="sales-persons">Sales Persons</button>
         <button class="tab-btn" data-tab="settings">Settings</button>
       </div>
       <div id="status-indicator" class="text-xs text-gray-500 hidden sm:block"></div>
@@ -58,12 +59,15 @@
       <div class="grid lg:grid-cols-[1.2fr_1fr] gap-3">
 
         <!-- ===== LEFT: BILL / CART ===== -->
-        <div class="bg-white rounded-lg shadow flex flex-col sell-cart-panel">
-          <div class="p-3 border-b flex items-center gap-2">
-            <h3 class="font-semibold text-gray-800">Current Bill</h3>
-            <span id="cart-count-badge" class="text-xs bg-gray-100 text-gray-700 px-2 py-0.5 rounded-full">0 items</span>
-            <span id="active-draft-chip" class="hidden ml-1 text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full border border-amber-300">Draft <span id="active-draft-label" class="mono"></span></span>
-            <button id="btn-clear-cart" class="ml-auto text-sm text-red-600 hover:underline">Clear</button>
+        <div class="bg-white rounded-lg shadow flex flex-col sell-cart-panel panel-cart">
+          <div class="panel-header panel-header-cart flex items-center gap-2">
+            <span class="panel-header-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/></svg>
+            </span>
+            <h3 class="font-semibold">Current Bill</h3>
+            <span id="cart-count-badge" class="panel-chip">0 items</span>
+            <span id="active-draft-chip" class="hidden panel-chip panel-chip-amber">Draft <span id="active-draft-label" class="mono"></span></span>
+            <button id="btn-clear-cart" class="ml-auto panel-link-danger">Clear</button>
           </div>
 
           <!-- Customer details + warranty toggles (directly under Current Bill) -->
@@ -97,13 +101,24 @@
 
             <!-- Customer fields -->
             <div class="grid grid-cols-2 gap-2">
-              <input id="customer-name"  type="text" class="p-2 border rounded" placeholder="Customer name (optional)" />
-              <input id="customer-phone" type="tel"  class="p-2 border rounded" placeholder="Phone (optional)" />
+              <input id="customer-name"  type="text" class="p-2 border rounded" placeholder="Customer name" />
+              <input id="customer-phone" type="tel"  class="p-2 border rounded" placeholder="Phone" />
             </div>
             <input id="customer-gst" type="text" autocomplete="off"
               class="w-full p-2 border-2 border-gray-200 rounded font-mono focus:outline-none transition-colors"
               placeholder="GST number"
               style="text-transform:uppercase" />
+            <div class="grid grid-cols-2 gap-2">
+              <input id="customer-city" type="text" class="p-2 border rounded" placeholder="City" />
+              <div class="relative">
+                <div class="flex gap-1">
+                  <input id="customer-category" type="text" autocomplete="off"
+                    class="flex-1 p-2 border rounded" placeholder="Customer category" />
+                  <button type="button" id="cc-new-btn" class="px-2 bg-gray-100 hover:bg-gray-200 border rounded text-sm" title="Add new customer category">+</button>
+                </div>
+                <div id="customer-category-dropdown" class="hidden absolute left-0 right-0 z-40 mt-1 bg-white border border-gray-300 rounded shadow-lg max-h-48 overflow-y-auto text-sm"></div>
+              </div>
+            </div>
           </div>
 
           <div class="sell-cart-scroll">
@@ -147,18 +162,24 @@
             </div>
 
             <div class="grid grid-cols-3 gap-2 pt-1">
+              <select id="sales-person" class="p-2 border rounded text-sm bg-white">
+                <option value="">Sales person</option>
+              </select>
               <button id="btn-save-draft" class="bg-amber-500 hover:bg-amber-600 text-white font-semibold py-3 rounded">Save Draft</button>
-              <button id="btn-save-print" class="col-span-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded text-lg">Save &amp; Print</button>
+              <button id="btn-save-print" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded">Save &amp; Print</button>
             </div>
             <p class="text-[11px] text-gray-400 text-center">F9 save &amp; print · F7 save draft · F2 focus search</p>
           </div>
         </div>
 
         <!-- ===== RIGHT: CATEGORIES / PRODUCTS ===== -->
-        <div class="bg-white rounded-lg shadow flex flex-col sell-picker-panel">
-          <div class="p-3 border-b flex items-center gap-2 flex-wrap gap-y-2">
-            <button id="btn-sell-back" class="hidden text-blue-600 hover:underline text-sm">&larr; Back</button>
-            <h3 id="sell-pane-title" class="font-semibold text-gray-800">Categories</h3>
+        <div class="bg-white rounded-lg shadow flex flex-col sell-picker-panel panel-picker">
+          <div class="panel-header panel-header-picker flex items-center gap-2 flex-wrap gap-y-2">
+            <button id="btn-sell-back" class="hidden panel-link-light">&larr; Back</button>
+            <span class="panel-header-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+            </span>
+            <h3 id="sell-pane-title" class="font-semibold">Categories</h3>
             <div class="ml-auto flex items-center gap-2">
               <input id="sell-pane-search" type="text" placeholder="Search products…" autocomplete="off"
                 class="p-2 border rounded text-sm w-64 focus:outline-none focus:border-blue-400" />
@@ -179,9 +200,12 @@
     <!-- ========== PRODUCTS TAB ========== -->
     <section id="tab-products" class="tab-content">
       <!-- Category grid (shown first) -->
-      <div id="products-cat-view" class="bg-white rounded-lg shadow">
-        <div class="p-4 flex flex-wrap items-center gap-2 border-b">
-          <h2 class="font-semibold text-gray-800">Browse by category</h2>
+      <div id="products-cat-view" class="bg-white rounded-lg shadow panel-card">
+        <div class="panel-header panel-header-products flex flex-wrap items-center gap-2">
+          <span class="panel-header-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+          </span>
+          <h2 class="font-semibold">Browse by category</h2>
           <input id="products-cat-search" type="text" placeholder="Search category..." class="ml-2 p-2 border rounded flex-1 min-w-[180px]" />
           <button id="btn-manage-categories" class="bg-gray-200 text-gray-800 px-3 py-2 rounded hover:bg-gray-300">Manage Categories</button>
           <button id="btn-add-product" class="bg-blue-600 text-white px-3 py-2 rounded hover:bg-blue-700">+ Add Product</button>
@@ -192,15 +216,15 @@
             <button id="btn-cat-list-view" class="px-3 py-1.5 text-sm bg-white text-gray-600 hover:bg-gray-50" title="List view">&#9776;</button>
           </div>
         </div>
-        <div id="products-cat-grid" class="p-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3"></div>
+        <div id="products-cat-grid" class="p-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3"></div>
         <div id="products-cat-list" class="hidden divide-y"></div>
       </div>
 
       <!-- Product list (shown after a category is picked) -->
-      <div id="products-list-view" class="bg-white rounded-lg shadow hidden">
-        <div class="p-4 flex flex-wrap items-center gap-2 border-b">
-          <button id="btn-products-back" class="text-blue-600 hover:underline text-sm">&larr; Categories</button>
-          <h2 id="products-list-title" class="font-semibold text-gray-800"></h2>
+      <div id="products-list-view" class="bg-white rounded-lg shadow hidden panel-card">
+        <div class="panel-header panel-header-products flex flex-wrap items-center gap-2">
+          <button id="btn-products-back" class="panel-link-light">&larr; Categories</button>
+          <h2 id="products-list-title" class="font-semibold"></h2>
           <input id="product-search" type="text" placeholder="Search name or code..." class="ml-auto p-2 border rounded min-w-[200px]" />
           <button id="btn-add-product-2" class="bg-blue-600 text-white px-3 py-2 rounded hover:bg-blue-700">+ Add Product</button>
           <span id="product-count" class="text-sm text-gray-500"></span>
@@ -228,7 +252,7 @@
           </table>
         </div>
         <!-- Card view -->
-        <div id="products-card-container" class="hidden p-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3"></div>
+        <div id="products-card-container" class="hidden p-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3"></div>
       </div>
     </section>
 
@@ -250,9 +274,12 @@
       </div>
 
       <!-- Category grid (shown first) -->
-      <div id="inv-cat-view" class="mt-4 bg-white rounded-lg shadow">
-        <div class="p-4 flex flex-wrap items-center gap-2 border-b">
-          <h2 class="font-semibold text-gray-800">Stock by category</h2>
+      <div id="inv-cat-view" class="mt-4 bg-white rounded-lg shadow panel-card">
+        <div class="panel-header panel-header-inventory flex flex-wrap items-center gap-2">
+          <span class="panel-header-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7L9 18l-5-5"/></svg>
+          </span>
+          <h2 class="font-semibold">Stock by category</h2>
           <input id="inv-cat-search" type="text" placeholder="Search category..." class="ml-2 p-2 border rounded flex-1 min-w-[180px]" />
           <button id="btn-grn" class="ml-auto bg-green-600 text-white px-3 py-2 rounded hover:bg-green-700">Receive Stock (GRN)</button>
           <button id="btn-adjust" class="bg-yellow-500 text-white px-3 py-2 rounded hover:bg-yellow-600">Adjust Stock</button>
@@ -262,10 +289,10 @@
       </div>
 
       <!-- Item list (shown after category click) -->
-      <div id="inv-list-view" class="mt-4 bg-white rounded-lg shadow hidden">
-        <div class="p-4 flex flex-wrap items-center gap-2 border-b">
-          <button id="btn-inv-back" class="text-blue-600 hover:underline text-sm">&larr; Categories</button>
-          <h2 id="inv-list-title" class="font-semibold text-gray-800"></h2>
+      <div id="inv-list-view" class="mt-4 bg-white rounded-lg shadow hidden panel-card">
+        <div class="panel-header panel-header-inventory flex flex-wrap items-center gap-2">
+          <button id="btn-inv-back" class="panel-link-light">&larr; Categories</button>
+          <h2 id="inv-list-title" class="font-semibold"></h2>
           <input id="inv-search" type="text" placeholder="Search items by name or code..." class="ml-auto p-2 border rounded min-w-[220px]" />
         </div>
         <div class="overflow-x-auto">
@@ -287,12 +314,15 @@
 
     <!-- ========== DAILY SALES TAB ========== -->
     <section id="tab-daily" class="tab-content">
-      <div class="bg-white rounded-lg shadow">
-        <div class="p-4 flex flex-wrap items-center gap-2 border-b">
-          <h2 class="font-semibold text-gray-800">Daily sales tracking</h2>
-          <span class="text-xs text-gray-500 ml-1">Pick a date to see items sold that day</span>
-          <input id="daily-date" type="date" class="ml-auto p-2 border rounded" />
-          <button id="btn-daily-today" class="bg-gray-200 px-3 py-2 rounded">Today</button>
+      <div class="bg-white rounded-lg shadow panel-card">
+        <div class="panel-header panel-header-daily flex flex-wrap items-center gap-2">
+          <span class="panel-header-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          </span>
+          <h2 class="font-semibold">Daily sales tracking</h2>
+          <span class="text-xs text-white/80 ml-1">Pick a date to see items sold that day</span>
+          <input id="daily-date" type="date" class="ml-auto p-2 border-0 rounded text-gray-800 text-sm" />
+          <button id="btn-daily-today" class="panel-action-light">Today</button>
         </div>
         <div class="grid md:grid-cols-3 gap-0">
           <!-- Day list -->
@@ -333,9 +363,14 @@
 
     <!-- ========== LABELS TAB ========== -->
     <section id="tab-labels" class="tab-content">
-      <div class="bg-white rounded-lg shadow p-4 mb-4">
-        <h2 class="font-semibold text-gray-800 mb-2">Generate labels</h2>
-        <div class="grid md:grid-cols-3 gap-3">
+      <div class="bg-white rounded-lg shadow mb-4 panel-card">
+        <div class="panel-header panel-header-labels flex items-center gap-2">
+          <span class="panel-header-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+          </span>
+          <h2 class="font-semibold">Generate labels</h2>
+        </div>
+        <div class="p-4 grid md:grid-cols-3 gap-3">
           <div>
             <label class="block text-xs text-gray-600 mb-1">Category filter</label>
             <select id="labels-category" class="w-full p-2 border rounded">
@@ -351,10 +386,38 @@
             <button id="btn-labels-select-none" class="flex-1 bg-gray-200 py-2 rounded">Clear</button>
           </div>
         </div>
-        <div class="mt-3 flex flex-wrap gap-2">
+        <div class="px-4 pb-2 grid md:grid-cols-3 gap-3">
+          <div>
+            <label class="block text-xs text-gray-600 mb-1">Sheet layout</label>
+            <select id="labels-layout" class="w-full p-2 border rounded text-sm">
+              <option value="layout-3x8">3 × 8 — 24 per A4 (63.5 × 38.1 mm)</option>
+              <option value="layout-5x13">5 × 13 — 65 per A4 (38 × 21.2 mm)</option>
+              <option value="layout-4x12">4 × 12 — 48 per A4 (47.6 × 24.3 mm)</option>
+              <option value="layout-2x7">2 × 7 — 14 per A4 (99.1 × 38.1 mm)</option>
+              <option value="layout-3x10">3 × 10 — 30 per A4 (63.5 × 29.6 mm)</option>
+              <option value="layout-1x1">1 × 1 — full page, single label</option>
+              <option value="layout-fit">Auto-fit (no cell size)</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs text-gray-600 mb-1">Copies of each label</label>
+            <input id="labels-copies" type="number" min="1" max="100" value="1" class="w-full p-2 border rounded text-sm" />
+          </div>
+          <div class="flex items-end gap-2">
+            <label class="inline-flex items-center gap-2 text-sm text-gray-700 select-none">
+              <input id="labels-borders" type="checkbox" checked class="w-4 h-4" /> Show cutting borders
+            </label>
+          </div>
+        </div>
+        <div class="px-4 pb-4 mt-1 flex flex-wrap gap-2">
           <button id="btn-labels-print" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Print selected</button>
           <button id="btn-labels-print-detailed" class="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700">Detailed label</button>
           <button id="btn-labels-pdf" class="bg-gray-800 text-white px-4 py-2 rounded hover:bg-gray-900">Download PDF</button>
+          <button id="btn-labels-export-csv" class="bg-emerald-600 text-white px-4 py-2 rounded hover:bg-emerald-700">Export barcodes (CSV)</button>
+          <label class="bg-amber-500 text-white px-4 py-2 rounded hover:bg-amber-600 cursor-pointer">
+            Import barcodes (CSV)
+            <input id="labels-import-csv" type="file" accept=".csv,text/csv" class="hidden" />
+          </label>
           <span id="labels-selected-count" class="text-sm text-gray-600 ml-auto self-center">0 selected</span>
         </div>
       </div>
@@ -392,9 +455,12 @@
           <div id="rep-alltime-bills" class="text-xs text-gray-500 mt-1">0 bills</div>
         </div>
       </div>
-      <div class="bg-white rounded-lg shadow mb-4">
-        <div class="p-4 border-b flex flex-wrap items-center gap-2">
-          <h2 class="font-semibold text-gray-800">Bills</h2>
+      <div class="bg-white rounded-lg shadow mb-4 panel-card">
+        <div class="panel-header panel-header-reports flex flex-wrap items-center gap-2">
+          <span class="panel-header-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+          </span>
+          <h2 class="font-semibold">Bills</h2>
           <div class="flex text-sm overflow-hidden rounded border border-gray-300">
             <button class="rep-cust-filter-btn px-3 py-1.5 font-medium bg-gray-800 text-white" data-filter="all">All</button>
             <button class="rep-cust-filter-btn px-3 py-1.5 font-medium bg-white text-gray-600 hover:bg-gray-50" data-filter="gst">GST</button>
@@ -432,8 +498,13 @@
           </table>
         </div>
       </div>
-      <div id="top-items-section" class="bg-white rounded-lg shadow">
-        <div class="p-4 border-b"><h2 class="font-semibold text-gray-800">Top-selling items (all time)</h2></div>
+      <div id="top-items-section" class="bg-white rounded-lg shadow panel-card">
+        <div class="panel-header panel-header-reports flex items-center gap-2">
+          <span class="panel-header-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+          </span>
+          <h2 class="font-semibold">Top-selling items (all time)</h2>
+        </div>
         <div class="overflow-x-auto">
           <table class="table-basic">
             <thead><tr><th>Code</th><th>Name</th><th class="text-right">Qty sold</th><th class="text-right">Revenue</th></tr></thead>
@@ -443,11 +514,56 @@
       </div>
     </section>
 
+    <!-- ========== SALES PERSONS TAB (admin only) ========== -->
+    <section id="tab-sales-persons" class="tab-content">
+      <div class="bg-white rounded-lg shadow panel-card">
+        <div class="panel-header panel-header-sp flex flex-wrap items-center gap-2">
+          <span class="panel-header-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          </span>
+          <h2 class="font-semibold">Sales Persons</h2>
+          <span class="text-xs text-white/80 ml-1">Pick a name to see their sales</span>
+          <div class="ml-auto flex items-center gap-2">
+            <label class="text-xs text-white/80">From</label>
+            <input id="sp-from" type="date" class="p-2 border-0 rounded text-gray-800 text-sm" />
+            <label class="text-xs text-white/80">To</label>
+            <input id="sp-to" type="date" class="p-2 border-0 rounded text-gray-800 text-sm" />
+            <button id="sp-quick-month" class="panel-action-light">This month</button>
+            <button id="sp-quick-today" class="panel-action-light">Today</button>
+          </div>
+        </div>
+        <div class="grid md:grid-cols-3 gap-0">
+          <!-- Left: add new + list -->
+          <div class="md:col-span-1 border-r">
+            <div class="p-3 border-b flex gap-2">
+              <input id="sp-new-name" type="text" class="flex-1 p-2 border rounded text-sm" placeholder="New sales person name" />
+              <button id="sp-add" class="px-3 py-2 rounded bg-blue-600 text-white text-sm hover:bg-blue-700">Add</button>
+            </div>
+            <div id="sp-list" class="max-h-[60vh] overflow-y-auto"></div>
+          </div>
+          <!-- Right: selected person's sales -->
+          <div class="md:col-span-2 p-4">
+            <div class="flex flex-wrap items-center gap-2 mb-3">
+              <h3 id="sp-summary-title" class="font-semibold text-gray-800">Select a sales person</h3>
+            </div>
+            <div id="sp-summary-stats" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3"></div>
+            <div id="sp-summary-bills" class="border rounded overflow-y-auto" style="max-height:50vh"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- ========== SETTINGS TAB ========== -->
     <section id="tab-settings" class="tab-content">
-      <div class="max-w-xl bg-white rounded-lg shadow p-4 mb-4">
-        <h2 class="font-semibold text-gray-800 mb-4">Shop info (prints on bill)</h2>
-        <div class="space-y-3">
+      <div class="grid sm:grid-cols-2 xl:grid-cols-3 gap-4 w-full">
+      <div class="bg-white rounded-lg shadow panel-card">
+        <div class="panel-header panel-header-settings flex items-center gap-2">
+          <span class="panel-header-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          </span>
+          <h2 class="font-semibold">Shop info (prints on bill)</h2>
+        </div>
+        <div class="p-4 space-y-3">
           <div>
             <label class="block text-xs text-gray-600 mb-1">Shop name</label>
             <input id="set-shop-name" type="text" class="w-full p-2 border rounded" />
@@ -484,7 +600,7 @@
         </div>
       </div>
 
-      <div id="user-creds-section" class="max-w-xl bg-white rounded-lg shadow p-4 mb-4 hidden">
+      <div id="user-creds-section" class="bg-white rounded-lg shadow p-4 hidden">
         <h2 class="font-semibold text-gray-800 mb-3">User accounts</h2>
         <div class="grid grid-cols-2 gap-3 mb-3">
           <div>
@@ -493,7 +609,13 @@
           </div>
           <div>
             <label class="block text-xs text-gray-600 mb-1">Accounts password</label>
-            <input id="set-user1-pass" type="password" class="w-full p-2 border rounded" placeholder="leave blank to keep" autocomplete="off" />
+            <div class="relative">
+              <input id="set-user1-pass" type="password" class="w-full p-2 pr-9 border rounded" autocomplete="off" />
+              <button type="button" data-toggle-pass="set-user1-pass" class="pass-toggle" title="Show / hide password" aria-label="Toggle password visibility">
+                <svg class="pass-eye-open" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                <svg class="pass-eye-shut hidden" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+              </button>
+            </div>
           </div>
         </div>
         <div class="grid grid-cols-2 gap-3">
@@ -503,14 +625,20 @@
           </div>
           <div>
             <label class="block text-xs text-gray-600 mb-1">Admin password</label>
-            <input id="set-user2-pass" type="password" class="w-full p-2 border rounded" placeholder="leave blank to keep" autocomplete="off" />
+            <div class="relative">
+              <input id="set-user2-pass" type="password" class="w-full p-2 pr-9 border rounded" autocomplete="off" />
+              <button type="button" data-toggle-pass="set-user2-pass" class="pass-toggle" title="Show / hide password" aria-label="Toggle password visibility">
+                <svg class="pass-eye-open" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                <svg class="pass-eye-shut hidden" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+              </button>
+            </div>
           </div>
         </div>
         <button id="btn-save-users" class="mt-3 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Save</button>
-        <p class="text-xs text-gray-400 mt-2">Leave password blank to keep the existing one.</p>
+        <p class="text-xs text-gray-400 mt-2">Click the eye icon to reveal the current password. Leave blank to keep the existing one when saving.</p>
       </div>
 
-      <div id="security-section" class="max-w-xl bg-white rounded-lg shadow p-4 mb-4 hidden">
+      <div id="security-section" class="bg-white rounded-lg shadow p-4 hidden">
         <h2 class="font-semibold text-gray-800 mb-1">Password recovery questions</h2>
         <p class="text-xs text-gray-500 mb-3">If you forget your password, you'll be asked these to reset it.</p>
         <div class="space-y-3">
@@ -530,7 +658,7 @@
         <button id="btn-save-security" class="mt-3 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Save</button>
       </div>
 
-      <div class="max-w-xl bg-white rounded-lg shadow p-4 mb-4">
+      <div class="bg-white rounded-lg shadow p-4">
         <h2 class="font-semibold text-gray-800 mb-2">Backup &amp; restore</h2>
         <p class="text-sm text-gray-600 mb-3">All data lives on this device. Export a JSON backup regularly — keep it on a pen-drive or email it to yourself.</p>
         <div class="flex flex-wrap gap-2">
@@ -543,7 +671,7 @@
         </div>
       </div>
 
-      <div id="cost-code-settings-section" class="max-w-xl bg-white rounded-lg shadow p-4 mb-4 hidden">
+      <div id="cost-code-settings-section" class="bg-white rounded-lg shadow p-4 hidden">
         <h2 class="font-semibold text-gray-800 mb-1">Secret Cost Code</h2>
         <p class="text-xs text-gray-500 mb-3">Map a letter to each digit 0–9. Enter cost codes on products — decoded cost appears while billing, <strong>never printed</strong> on customer bills.</p>
         <div class="flex items-center gap-3">
@@ -552,7 +680,7 @@
         </div>
       </div>
 
-      <div class="max-w-xl bg-white rounded-lg shadow p-4">
+      <div class="bg-white rounded-lg shadow p-4">
         <h2 class="font-semibold text-gray-800 mb-2">App update</h2>
         <p class="text-sm text-gray-600 mb-3">Current version: <strong id="current-sw-version">—</strong></p>
         <div class="flex items-center gap-3 flex-wrap">
@@ -564,6 +692,7 @@
           <button id="btn-backup-update" class="text-sm bg-white border border-blue-300 text-blue-700 px-3 py-1 rounded hover:bg-blue-50">Back up first</button>
           <button id="btn-apply-update" class="text-sm bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700">Update now</button>
         </div>
+      </div>
       </div>
     </section>
   </main>
@@ -674,21 +803,46 @@
 
   <!-- Bulk add -->
   <div id="modal-bulk" class="modal-backdrop hidden">
-    <div class="modal-panel wide p-4">
+    <div class="modal-panel p-4" style="max-width:1400px;width:96vw">
       <div class="flex items-center justify-between mb-3">
         <h3 class="text-lg font-semibold">Bulk add products</h3>
         <button class="modal-close text-gray-500 text-2xl leading-none">&times;</button>
       </div>
-      <p class="text-sm text-gray-600 mb-2">Paste rows from Excel (tab or comma separated). Columns: <span class="mono">Name, Category, Price, Unit (piece/set/...), Stock, Reorder</span>. Category must be one of your existing categories (case-insensitive). Only Name, Category and Price are required.</p>
-      <textarea id="bulk-text" rows="10" class="w-full p-2 border rounded mono text-sm" placeholder="Hydraulic Jack 2 Ton	Hand Tools	1800	piece	3	1
-Spanner Set 10pc	Hand Tools	650	set	5	2"></textarea>
-      <div class="mt-3 flex justify-between items-center">
-        <span id="bulk-parse-summary" class="text-sm text-gray-600"></span>
-        <div class="flex gap-2">
-          <button class="modal-close px-4 py-2 rounded bg-gray-200">Cancel</button>
-          <button id="bulk-parse" class="px-4 py-2 rounded bg-gray-800 text-white">Preview</button>
-          <button id="bulk-save" class="px-4 py-2 rounded bg-blue-600 text-white" disabled>Save all</button>
-        </div>
+      <p class="text-sm text-gray-600 mb-3">Fill rows like a spreadsheet. Required columns are marked <span class="text-red-500">*</span>. Categories you type that don't exist yet are created on save. Click <strong>Paste from clipboard</strong> to bulk-paste tab-separated rows from Excel/Sheets.</p>
+      <div class="flex items-center gap-2 mb-2 flex-wrap">
+        <button id="bulk-add-row" class="px-3 py-1.5 bg-blue-100 text-blue-800 rounded text-sm hover:bg-blue-200 font-medium">+ Add row</button>
+        <button id="bulk-paste" class="px-3 py-1.5 bg-gray-100 text-gray-800 rounded text-sm hover:bg-gray-200">Paste from clipboard</button>
+        <button id="bulk-clear" class="px-3 py-1.5 bg-gray-100 text-gray-600 rounded text-sm hover:bg-gray-200">Clear all</button>
+        <span id="bulk-parse-summary" class="text-sm text-gray-600 ml-auto"></span>
+      </div>
+      <div class="overflow-auto border rounded" style="max-height:60vh">
+        <table id="bulk-grid" class="w-full text-sm">
+          <thead class="bg-gray-100 sticky top-0 z-10">
+            <tr>
+              <th class="w-8 px-2 py-2 text-center text-xs text-gray-500">#</th>
+              <th class="px-2 py-2 text-left text-xs font-semibold text-gray-700">Name <span class="text-red-500">*</span></th>
+              <th class="px-2 py-2 text-left text-xs font-semibold text-gray-700">Category <span class="text-red-500">*</span></th>
+              <th class="px-2 py-2 text-left text-xs font-semibold text-gray-700">Our Price ₹ <span class="text-red-500">*</span></th>
+              <th class="px-2 py-2 text-left text-xs font-semibold text-gray-700">MRP ₹</th>
+              <th class="px-2 py-2 text-left text-xs font-semibold text-gray-700">Unit</th>
+              <th class="px-2 py-2 text-left text-xs font-semibold text-gray-700">Stock</th>
+              <th class="px-2 py-2 text-left text-xs font-semibold text-gray-700">Reorder</th>
+              <th class="px-2 py-2 text-left text-xs font-semibold text-gray-700">HSN</th>
+              <th class="px-2 py-2 text-left text-xs font-semibold text-gray-700">CGST %</th>
+              <th class="px-2 py-2 text-left text-xs font-semibold text-gray-700">SGST %</th>
+              <th class="px-2 py-2 text-left text-xs font-semibold text-gray-700">Cost Code</th>
+              <th class="px-2 py-2 text-left text-xs font-semibold text-gray-700">Fixed Code</th>
+              <th class="w-8"></th>
+            </tr>
+          </thead>
+          <tbody id="bulk-body"></tbody>
+        </table>
+      </div>
+      <!-- Floating category search dropdown — positioned over the active category cell -->
+      <div id="bulk-cat-dropdown" class="hidden fixed z-50 bg-white border border-gray-300 rounded shadow-lg max-h-56 overflow-y-auto text-sm" style="min-width:200px"></div>
+      <div class="mt-3 flex justify-end gap-2">
+        <button class="modal-close px-4 py-2 rounded bg-gray-200">Cancel</button>
+        <button id="bulk-save" class="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700" disabled>Save all</button>
       </div>
     </div>
   </div>
