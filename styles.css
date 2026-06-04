@@ -602,13 +602,13 @@ textarea:focus {
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 11pt; font-weight: 800; letter-spacing: 0.06em;
   }
-  /* FP: <value> — same mono-bold treatment so it visually pairs with Code: */
+  /* FP: <value> — normal weight, lower emphasis (Code: is the highlight) */
   .print-labels .detailed-label .dl-fx {
-    font-size: 8pt; font-weight: 700;
+    font-size: 8pt; font-weight: 400; color: #444;
   }
   .print-labels .detailed-label .dl-fx-val {
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 11pt; font-weight: 800; letter-spacing: 0.06em;
+    font-size: 8.5pt; font-weight: 400; letter-spacing: 0.04em;
   }
   .print-labels .detailed-label .dl-line {
     font-size: 8pt; margin: 0.5mm 0;
