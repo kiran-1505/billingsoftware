@@ -586,8 +586,30 @@ textarea:focus {
     font-size: 11pt; font-weight: 800;
     margin: 0.5mm 0;
   }
+  /* Our price line: normal weight (not highlighted) so MRP and the codes
+     row are the visual emphasis points. */
+  .print-labels .detailed-label .dl-ourprice {
+    font-size: 9pt; font-weight: 400;
+    margin: 0.5mm 0;
+  }
   .print-labels .detailed-label .dl-lbl { font-size: 8pt; font-weight: 500; }
   .print-labels .detailed-label .dl-val { font-weight: 800; }
+  /* Code: <value> — highlighted */
+  .print-labels .detailed-label .dl-cc-lbl {
+    font-size: 8pt; font-weight: 700;
+  }
+  .print-labels .detailed-label .dl-cc-val {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11pt; font-weight: 800; letter-spacing: 0.06em;
+  }
+  /* FP: <value> — same mono-bold treatment so it visually pairs with Code: */
+  .print-labels .detailed-label .dl-fx {
+    font-size: 8pt; font-weight: 700;
+  }
+  .print-labels .detailed-label .dl-fx-val {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11pt; font-weight: 800; letter-spacing: 0.06em;
+  }
   .print-labels .detailed-label .dl-line {
     font-size: 8pt; margin: 0.5mm 0;
   }
@@ -607,11 +629,15 @@ textarea:focus {
   .print-labels.detailed.layout-4x12 .detailed-label .dl-name { font-size: 7pt; }
   .print-labels.detailed.layout-5x13 .detailed-label .dl-mrp,
   .print-labels.detailed.layout-4x12 .detailed-label .dl-mrp { font-size: 8pt; }
+  .print-labels.detailed.layout-5x13 .detailed-label .dl-ourprice,
+  .print-labels.detailed.layout-4x12 .detailed-label .dl-ourprice { font-size: 6.5pt; }
   /* Detailed on large sheets */
   .print-labels.detailed.layout-2x7 .detailed-label .dl-name { font-size: 12pt; }
   .print-labels.detailed.layout-2x7 .detailed-label .dl-mrp { font-size: 16pt; }
+  .print-labels.detailed.layout-2x7 .detailed-label .dl-ourprice { font-size: 12pt; }
   .print-labels.detailed.layout-1x1 .detailed-label .dl-name { font-size: 28pt; }
   .print-labels.detailed.layout-1x1 .detailed-label .dl-mrp { font-size: 36pt; }
+  .print-labels.detailed.layout-1x1 .detailed-label .dl-ourprice { font-size: 22pt; }
 
   /* Use zero @page margin for sheet templates so cells align exactly to the
      sheet edges. The browser print dialog "no margins" should be selected. */

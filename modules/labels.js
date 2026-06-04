@@ -158,10 +158,10 @@ async function _renderDetailedLabelsToPrintArea(ids) {
       <div class="label-card detailed-label">
         <div class="dl-name">${escapeHTML(p.name)}</div>
         <div class="dl-mrp"><span class="dl-lbl">MRP</span> <span class="dl-val">${fmtMoney(p.sellingPrice)}</span></div>
-        ${p.ourPrice != null ? `<div class="dl-mrp"><span class="dl-lbl">Our price</span> <span class="dl-val">${fmtMoney(p.ourPrice)}</span></div>` : ''}
+        ${p.ourPrice != null ? `<div class="dl-ourprice"><span class="dl-lbl">Our price</span> <span>${fmtMoney(p.ourPrice)}</span></div>` : ''}
         <div class="dl-codes">
-          <span class="dl-fx">${fx ? escapeHTML(fx.toUpperCase()) : ''}</span>
-          <span class="dl-cc">${cc ? `Code: <span class="dl-cc-val">${escapeHTML(cc.toUpperCase())}</span>` : ''}</span>
+          <span class="dl-fx">${fx ? `FP: <span class="dl-fx-val">${escapeHTML(fx.toUpperCase())}</span>` : ''}</span>
+          <span class="dl-cc">${cc ? `<span class="dl-cc-lbl">Code:</span> <span class="dl-cc-val">${escapeHTML(cc.toUpperCase())}</span>` : ''}</span>
         </div>
         ${bcImg ? `<img src="${bcImg}" alt="barcode" class="dl-barcode" />` : ''}
         <div class="dl-shortcode">${escapeHTML(p.shortCode)}</div>

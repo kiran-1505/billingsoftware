@@ -439,8 +439,8 @@ async function _saveProductFromModal() {
   const ourPrice  = ourPriceRaw === '' ? NaN : parseFloat(ourPriceRaw);
   // MRP is optional — defaults to Our Price when blank
   const price     = mrpRaw === '' ? ourPrice : parseFloat(mrpRaw);
-  const stock     = parseInt($('#pm-stock').value || '0', 10);
-  const reorder   = parseInt($('#pm-reorder').value || '0', 10);
+  const stock     = parseFloat($('#pm-stock').value || '0') || 0;
+  const reorder   = parseFloat($('#pm-reorder').value || '0') || 0;
   const hsn       = $('#pm-hsn').value.trim();
   const cgstRate  = parseFloat($('#pm-cgst-rate').value) || 0;
   const sgstRate  = parseFloat($('#pm-sgst-rate').value) || 0;
@@ -767,8 +767,8 @@ async function _saveBulk() {
       sellingPrice: mrp,
       ourPrice,
       unit: r.unit || 'piece',
-      stockQty: parseInt(r.stockQty || '0', 10) || 0,
-      reorderLevel: parseInt(r.reorderLevel || '5', 10) || 5,
+      stockQty: parseFloat(r.stockQty || '0') || 0,
+      reorderLevel: parseFloat(r.reorderLevel || '5') || 5,
       hsn: r.hsn || '',
       cgstRate: cgst,
       sgstRate: sgst,

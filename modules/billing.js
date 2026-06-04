@@ -239,9 +239,10 @@ export function handleEnterInBillSearch() {
     return;
   }
 
-  const m = raw.match(/^(\d+)\s*\*\s*(.+)$/);
+  // Quick add: "1.5*ABC" or "2*ABC" (fractional qty allowed for kg/litre etc.)
+  const m = raw.match(/^(\d+(?:\.\d+)?)\s*\*\s*(.+)$/);
   if (m) {
-    const qty  = parseInt(m[1], 10);
+    const qty  = parseFloat(m[1]);
     const rest = m[2].trim();
     const pp   = parseScannedPayload(rest);
     const code = pp ? pp.code : rest;
@@ -321,7 +322,7 @@ export function renderCart() {
     <tr data-row="${i}">
       <td style="width:auto">${escapeHTML(l.name)}${l.ephemeral ? ' <span class="text-xs text-yellow-700">(from QR)</span>' : ''}</td>
       ${codeCell}
-      <td style="width:72px;padding-left:4px;padding-right:4px"><input type="number" min="1" step="1" value="${l.qty}" data-qty="${i}" class="cart-input" /></td>
+      <td style="width:80px;padding-left:4px;padding-right:4px"><input type="number" min="0.001" step="0.001" value="${l.qty}" data-qty="${i}" class="cart-input" /></td>
       <td style="width:150px;padding-left:4px;padding-right:4px"><input type="number" min="0" step="0.01" value="${l.price}" data-price="${i}" class="cart-input text-right" title="Edit price for this bill only" /></td>
       <td style="width:110px" class="text-right font-semibold" data-line-total="${i}">${fmtMoney(l.price * l.qty)}</td>
       <td style="width:32px" class="text-center"><button class="cart-rm-btn" data-rm="${i}" title="Remove"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button></td>
@@ -337,12 +338,15 @@ export function renderCart() {
   body.querySelectorAll('[data-qty]').forEach(el => {
     el.addEventListener('input', () => {
       const i = +el.dataset.qty;
-      state.cart[i].qty = Math.max(1, parseInt(el.value.trim(), 10) || 1);
+      const v = parseFloat((el.value || '').trim());
+      // Fractional qty allowed (e.g. 1.5 kg). Min 0.001 so the line stays real.
+      state.cart[i].qty = (v > 0) ? v : 0.001;
       updateLine(i);
     });
     el.addEventListener('blur', () => {
       const i = +el.dataset.qty;
-      if (!(parseInt(el.value.trim(), 10) >= 1)) el.value = state.cart[i].qty;
+      const v = parseFloat((el.value || '').trim());
+      if (!(v > 0)) el.value = state.cart[i].qty;
     });
     el.addEventListener('focus', () => el.select());
   });
@@ -373,7 +377,8 @@ function _updateCartTotals() {
   const totalQty = state.cart.reduce((s, l) => s + l.qty, 0);
   const total    = state.cart.reduce((s, l) => s + l.qty * l.price, 0);
   $('#cart-count').textContent = state.cart.length;
-  $('#cart-qty').textContent   = totalQty;
+  // Trim trailing zeros so "3" shows as "3" but "2.5" still shows
+  $('#cart-qty').textContent   = Number(totalQty.toFixed(3)).toString();
   $('#cart-total').textContent = fmtMoney(total);
   const badge = $('#cart-count-badge');
   if (badge) badge.textContent = `${state.cart.length} ${state.cart.length === 1 ? 'item' : 'items'}`;
@@ -801,7 +806,8 @@ function _renderGSTInvoice(invoice, s) {
   const beforeRound = subtotal + cgst + sgst + igst;
   const finalTotal  = Math.round(beforeRound);
   const roundOff    = finalTotal - beforeRound; // positive = added, negative = less
-  const totalQty    = lines.reduce((a, l) => a + l.qty, 0);
+  // Trim trailing zeros so "3" prints as "3" but fractional "1.5" stays "1.5"
+  const totalQty    = Number(lines.reduce((a, l) => a + l.qty, 0).toFixed(3)).toString();
   const unitGuess   = lines[0]?.unit || 'No';
   const initials    = (s.shopName || 'S').split(/\s+/).map(w => w[0] || '').join('').slice(0, 2).toUpperCase();
 
@@ -810,7 +816,7 @@ function _renderGSTInvoice(invoice, s) {
       <td class="c">${l.idx}</td>
       <td>${escapeHTML(l.name)}</td>
       <td class="c">${escapeHTML(l.hsn || '')}</td>
-      <td class="r">${l.qty} ${escapeHTML(l.unit)}</td>
+      <td class="r">${Number(l.qty.toFixed(3))} ${escapeHTML(l.unit)}</td>
       <td class="r">${l.rateIncl.toFixed(2)}</td>
       <td class="r">${l.rateBase.toFixed(2)}</td>
       <td class="c">${escapeHTML(l.unit)}</td>
