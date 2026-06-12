@@ -29,6 +29,7 @@ export async function renderReports() {
   const isAdmin = state.currentUser === 'user2';
   $('#bills-head-paid').classList.toggle('hidden', !isAdmin);
   $('#bills-foot-paid').classList.toggle('hidden', !isAdmin);
+  $('#btn-rep-pdf-gst-only')?.classList.toggle('hidden', !isAdmin);
   $('#bills-head-actions')?.classList.toggle('hidden', !isAdmin);
   $('#bills-foot-actions')?.classList.toggle('hidden', !isAdmin);
   $('#top-items-section').classList.toggle('hidden', isAdmin ? false : true);
@@ -223,6 +224,225 @@ async function _exportBillsCSV() {
   toast('CSV downloaded', 'success');
 }
 
+// ---- GST Sales Register PDF (auditor-ready) ----
+// State codes (first 2 chars of GSTIN). Kept local so this module is self-contained.
+const _STATES = {
+  '01':'Jammu and Kashmir','02':'Himachal Pradesh','03':'Punjab','04':'Chandigarh',
+  '05':'Uttarakhand','06':'Haryana','07':'Delhi','08':'Rajasthan','09':'Uttar Pradesh',
+  '10':'Bihar','11':'Sikkim','12':'Arunachal Pradesh','13':'Nagaland','14':'Manipur',
+  '15':'Mizoram','16':'Tripura','17':'Meghalaya','18':'Assam','19':'West Bengal',
+  '20':'Jharkhand','21':'Odisha','22':'Chhattisgarh','23':'Madhya Pradesh','24':'Gujarat',
+  '27':'Maharashtra','29':'Karnataka','30':'Goa','32':'Kerala','33':'Tamil Nadu',
+  '34':'Puducherry','36':'Telangana','37':'Andhra Pradesh','38':'Ladakh',
+};
+function _stateName(code) { return _STATES[code || ''] || ''; }
+
+// One row of GST Sales Register numbers for a single invoice.
+// ALWAYS uses the FILED (post-scale-down) values — `inv.items` and `inv.total`
+// are rewritten by the scale-down flow, so:
+//   • Non-scaled bills → original numbers (same as what accounts sees)
+//   • Scaled bills      → filed numbers (the GST-return version)
+// The pre-scale snapshot lives in `_gstOriginalItems` and is intentionally
+// NOT used here, because this PDF is the auditor's filing copy.
+function _gstRowFor(inv, sellerStateCode) {
+  const buyerStateCode = (inv.customerGst || '').slice(0, 2);
+  const isInterState = !!sellerStateCode && !!buyerStateCode && sellerStateCode !== buyerStateCode;
+  let taxable = 0, cgst = 0, sgst = 0, igst = 0;
+  let firstHSN = '';
+  const ratesSeen = new Set();
+  for (const l of (inv.items || [])) {
+    const prod = (state.products || []).find(p => p.id === l.productId);
+    let cRate = prod?.cgstRate, sRate = prod?.sgstRate;
+    if (cRate == null && sRate == null) {
+      const legacy = prod?.gstRate ?? 18;
+      cRate = legacy / 2; sRate = legacy / 2;
+    } else { cRate = cRate ?? 0; sRate = sRate ?? 0; }
+    const gstRate = cRate + sRate;
+    ratesSeen.add(Math.round(gstRate * 100) / 100);
+    const rateIncl = Number(l.price) || 0;
+    const qty      = Number(l.qty) || 0;
+    const base     = rateIncl / (1 + gstRate / 100);
+    const lineTax  = base * qty;
+    taxable += lineTax;
+    if (isInterState) igst += lineTax * gstRate / 100;
+    else { cgst += lineTax * cRate / 100; sgst += lineTax * sRate / 100; }
+    if (!firstHSN && prod?.hsn) firstHSN = prod.hsn;
+  }
+  const rateLabel = ratesSeen.size === 0 ? '—'
+                  : ratesSeen.size === 1 ? `${[...ratesSeen][0]}%`
+                  : 'Mixed';
+  return {
+    invoiceNo: inv.invoiceNo || '',
+    date:      (inv.date || '').slice(0, 10),
+    customer:  inv.customerName || (isGstInvoice(inv) ? '(GST customer)' : 'Cash Sale'),
+    gstin:     inv.customerGst || '—',
+    state:     _stateName(buyerStateCode) || _stateName(sellerStateCode) || '',
+    type:      isGstInvoice(inv) ? 'B2B' : 'B2C',
+    hsn:       firstHSN || '—',
+    taxable,
+    rateLabel,
+    cgst, sgst, igst,
+    total:     inv.total || 0, // filed total (scaled if applicable)
+  };
+}
+
+// opts.gstOnly = true → ignore the on-screen filter, force GST customers only.
+//                       Used by the admin-only "GST Customers Only PDF" button.
+async function _exportGSTSalesRegisterPDF(opts = {}) {
+  const invoices = await db.all('invoices');
+  const from = $('#rep-date-from').value;
+  const to   = $('#rep-date-to').value;
+  let list = invoices;
+  if (from) list = list.filter(i => (i.date || '').slice(0, 10) >= from);
+  if (to)   list = list.filter(i => (i.date || '').slice(0, 10) <= to);
+  if (opts.gstOnly) {
+    list = list.filter(isGstInvoice);
+  } else {
+    if (state.repCustFilter === 'gst')    list = list.filter(isGstInvoice);
+    if (state.repCustFilter === 'walkin') list = list.filter(i => !isGstInvoice(i));
+  }
+  if (!list.length) return toast('No bills in this range', 'error');
+  list.sort((a, b) => (a.invoiceNo || '').localeCompare(b.invoiceNo || ''));
+
+  const s = state.settings || {};
+  const sellerStateCode = (s.gstin || '').slice(0, 2);
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'landscape' });
+  const PAGE_W = 297, PAGE_H = 210, mg = 8;
+  let y = mg;
+
+  // ── Top header block ──
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(14);
+  const title = opts.gstOnly ? 'GST SALES REGISTER — GST CUSTOMERS ONLY' : 'GST SALES REGISTER';
+  doc.text(title, PAGE_W / 2, y + 6, { align: 'center' });
+  y += 9;
+  doc.setFontSize(9); doc.setFont('helvetica', 'normal');
+  doc.text(s.shopName || '', PAGE_W / 2, y, { align: 'center' });
+  y += 4;
+  if (s.gstin) { doc.text(`GSTIN: ${s.gstin}    State: ${_stateName(sellerStateCode) || '—'}`, PAGE_W / 2, y, { align: 'center' }); y += 4; }
+  const period = from || to ? `Period: ${from || '…'}  to  ${to || '…'}` : 'Period: All bills';
+  doc.text(period, PAGE_W / 2, y, { align: 'center' });
+  y += 6;
+
+  // ── Column definitions ──
+  const COLS = [
+    { key: 's',       label: 'Sl',          w: 8,  align: 'center' },
+    { key: 'invoiceNo', label: 'Invoice No.', w: 22, align: 'left'   },
+    { key: 'date',    label: 'Date',        w: 18, align: 'left'   },
+    { key: 'customer', label: 'Customer',   w: 38, align: 'left'   },
+    { key: 'gstin',   label: 'GSTIN',       w: 30, align: 'left'   },
+    { key: 'state',   label: 'State',       w: 22, align: 'left'   },
+    { key: 'type',    label: 'Type',        w: 10, align: 'center' },
+    { key: 'hsn',     label: 'HSN',         w: 14, align: 'center' },
+    { key: 'taxable', label: 'Taxable ₹',   w: 22, align: 'right', n: true },
+    { key: 'rateLabel', label: 'GST %',     w: 12, align: 'center' },
+    { key: 'cgst',    label: 'CGST ₹',      w: 18, align: 'right', n: true },
+    { key: 'sgst',    label: 'SGST ₹',      w: 18, align: 'right', n: true },
+    { key: 'igst',    label: 'IGST ₹',      w: 18, align: 'right', n: true },
+    { key: 'total',   label: 'Total ₹',     w: 22, align: 'right', n: true },
+  ];
+  const tableW = COLS.reduce((a, c) => a + c.w, 0);
+  const tableX = mg + Math.max(0, (PAGE_W - 2 * mg - tableW) / 2);
+  const rowH = 6;
+
+  const drawHeader = () => {
+    doc.setFillColor(30, 41, 59); doc.setTextColor(255);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5);
+    doc.rect(tableX, y, tableW, rowH + 1, 'F');
+    let x = tableX;
+    for (const c of COLS) {
+      const tx = c.align === 'right' ? x + c.w - 1 : c.align === 'center' ? x + c.w / 2 : x + 1;
+      doc.text(c.label, tx, y + rowH - 1, { align: c.align });
+      x += c.w;
+    }
+    doc.setTextColor(0);
+    y += rowH + 1;
+  };
+  drawHeader();
+
+  // ── Data rows ──
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5);
+  const fmt2 = (n) => (Number(n) || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  let totals = { taxable: 0, cgst: 0, sgst: 0, igst: 0, total: 0 };
+  let zebra = false;
+  let pageNum = 1;
+
+  for (let i = 0; i < list.length; i++) {
+    if (y + rowH > PAGE_H - mg - 18) {
+      doc.setFontSize(7); doc.setTextColor(140);
+      doc.text(`Page ${pageNum}`, PAGE_W - mg, PAGE_H - mg + 2, { align: 'right' });
+      doc.setTextColor(0);
+      doc.addPage(); pageNum++; y = mg + 4;
+      drawHeader();
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5);
+    }
+    const r = _gstRowFor(list[i], sellerStateCode);
+    totals.taxable += r.taxable;
+    totals.cgst    += r.cgst;
+    totals.sgst    += r.sgst;
+    totals.igst    += r.igst;
+    totals.total   += r.total;
+
+    if (zebra) { doc.setFillColor(248, 250, 252); doc.rect(tableX, y, tableW, rowH, 'F'); }
+    zebra = !zebra;
+
+    let x = tableX;
+    const cells = { s: String(i + 1), ...r,
+      taxable: fmt2(r.taxable), cgst: fmt2(r.cgst), sgst: fmt2(r.sgst),
+      igst: fmt2(r.igst), total: fmt2(r.total),
+    };
+    for (const c of COLS) {
+      let v = String(cells[c.key] ?? '');
+      // Trim text that's too wide
+      while (doc.getTextWidth(v) > c.w - 1.5 && v.length > 4) v = v.slice(0, -2);
+      const tx = c.align === 'right' ? x + c.w - 1 : c.align === 'center' ? x + c.w / 2 : x + 1;
+      doc.text(v, tx, y + rowH - 2, { align: c.align });
+      x += c.w;
+    }
+    // Vertical column lines
+    doc.setDrawColor(220); doc.setLineWidth(0.1);
+    let lx = tableX;
+    for (const c of COLS) { doc.line(lx, y, lx, y + rowH); lx += c.w; }
+    doc.line(lx, y, lx, y + rowH);
+    // Bottom border for the row
+    doc.line(tableX, y + rowH, tableX + tableW, y + rowH);
+    y += rowH;
+  }
+
+  // ── Totals row ──
+  doc.setFillColor(30, 41, 59); doc.setTextColor(255);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(8);
+  doc.rect(tableX, y, tableW, rowH + 1, 'F');
+  let tx = tableX;
+  const totalCells = {
+    label: 'TOTAL',
+    taxable: fmt2(totals.taxable), cgst: fmt2(totals.cgst),
+    sgst: fmt2(totals.sgst), igst: fmt2(totals.igst), total: fmt2(totals.total),
+  };
+  for (const c of COLS) {
+    let v = '';
+    if (c.key === 'invoiceNo') v = 'TOTAL';
+    else if (['taxable','cgst','sgst','igst','total'].includes(c.key)) v = totalCells[c.key];
+    const tt = c.align === 'right' ? tx + c.w - 1 : c.align === 'center' ? tx + c.w / 2 : tx + 1;
+    doc.text(v, tt, y + rowH - 1, { align: c.align });
+    tx += c.w;
+  }
+  doc.setTextColor(0);
+  y += rowH + 3;
+
+  // ── Footer ──
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(7);
+  doc.text(`Bills: ${list.length}`, mg, PAGE_H - mg + 2);
+  doc.text(`Generated: ${new Date().toLocaleString('en-IN')}`, PAGE_W / 2, PAGE_H - mg + 2, { align: 'center' });
+  doc.text(`Page ${pageNum}`, PAGE_W - mg, PAGE_H - mg + 2, { align: 'right' });
+
+  const fileBase = opts.gstOnly ? 'GST-sales-register-GST-only' : 'GST-sales-register';
+  doc.save(`${fileBase}-${from || 'start'}-to-${to || 'end'}.pdf`);
+  toast(`PDF downloaded — ${list.length} bills`, 'success');
+}
+
 // ---- Wire ----
 export function wireReports() {
   // Bill preview modal print button
@@ -235,6 +455,8 @@ export function wireReports() {
     renderReports();
   });
   $('#btn-rep-export').addEventListener('click', _exportBillsCSV);
+  $('#btn-rep-pdf')?.addEventListener('click', () => _exportGSTSalesRegisterPDF());
+  $('#btn-rep-pdf-gst-only')?.addEventListener('click', () => _exportGSTSalesRegisterPDF({ gstOnly: true }));
   $$('.rep-cust-filter-btn').forEach(btn => btn.addEventListener('click', () => {
     state.repCustFilter = btn.dataset.filter;
     $$('.rep-cust-filter-btn').forEach(b => {
