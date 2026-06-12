@@ -32,7 +32,6 @@ export async function renderReports() {
   $('#btn-rep-pdf-gst-only')?.classList.toggle('hidden', !isAdmin);
   $('#bills-head-actions')?.classList.toggle('hidden', !isAdmin);
   $('#bills-foot-actions')?.classList.toggle('hidden', !isAdmin);
-  $('#top-items-section').classList.toggle('hidden', isAdmin ? false : true);
 
   const invoices = await db.all('invoices');
   invoices.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
@@ -109,29 +108,9 @@ export async function renderReports() {
     foot.classList.add('hidden');
   }
 
-  // Top items — admin sees original (pre-scale) quantities
-  const counter = {};
-  for (const inv of invoices) {
-    const items = isAdmin && inv._gstOriginalItems ? inv._gstOriginalItems : (inv.items || []);
-    for (const l of items) {
-      const k = l.shortCode || '__' + l.name;
-      if (!counter[k]) counter[k] = { name: l.name, shortCode: l.shortCode, qty: 0, rev: 0 };
-      counter[k].qty += l.qty;
-      counter[k].rev += l.qty * l.price;
-    }
-  }
-  const top   = Object.values(counter).sort((a, b) => b.qty - a.qty).slice(0, 20);
-  const tBody = $('#top-items-body');
-  if (!top.length) {
-    tBody.innerHTML = `<tr><td colspan="4" class="text-center py-6 text-gray-400">No sales yet</td></tr>`;
-  } else {
-    tBody.innerHTML = top.map(t => `<tr>
-      <td class="mono">${escapeHTML(t.shortCode || '—')}</td>
-      <td>${escapeHTML(t.name)}</td>
-      <td class="text-right">${(Number(t.qty) || 0).toLocaleString('en-IN')}</td>
-      <td class="text-right">${fmtMoney(t.rev)}</td>
-    </tr>`).join('');
-  }
+  // The "top-selling items" panel was moved to the Inventory tab
+  // (left of the Low Stock button) where it lives as an on-demand modal
+  // with bar-chart visualisation and full ranking of every item.
 }
 
 async function _reprintInvoice(id) {

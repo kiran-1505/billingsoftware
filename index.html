@@ -283,6 +283,7 @@
           <input id="inv-cat-search" type="text" placeholder="Search category..." class="ml-2 p-2 border rounded flex-1 min-w-[180px]" />
           <button id="btn-grn" class="ml-auto bg-green-600 text-white px-3 py-2 rounded hover:bg-green-700">Receive Stock (GRN)</button>
           <button id="btn-adjust" class="bg-yellow-500 text-white px-3 py-2 rounded hover:bg-yellow-600">Adjust Stock</button>
+          <button id="btn-top-sellers" class="bg-amber-600 text-white px-3 py-2 rounded hover:bg-amber-700">Top Sellers</button>
           <button id="btn-show-low" class="bg-red-600 text-white px-3 py-2 rounded hover:bg-red-700">Low Stock Only</button>
         </div>
         <div id="inv-cat-grid" class="p-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3"></div>
@@ -497,20 +498,6 @@
                 <td id="bills-foot-actions"></td>
               </tr>
             </tfoot>
-          </table>
-        </div>
-      </div>
-      <div id="top-items-section" class="bg-white rounded-lg shadow panel-card">
-        <div class="panel-header panel-header-reports flex items-center gap-2">
-          <span class="panel-header-icon">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-          </span>
-          <h2 class="font-semibold">Top-selling items (all time)</h2>
-        </div>
-        <div class="overflow-x-auto">
-          <table class="table-basic">
-            <thead><tr><th>Code</th><th>Name</th><th class="text-right">Qty sold</th><th class="text-right">Revenue</th></tr></thead>
-            <tbody id="top-items-body"></tbody>
           </table>
         </div>
       </div>
@@ -851,30 +838,41 @@
 
   <!-- GRN (receive stock) -->
   <div id="modal-grn" class="modal-backdrop hidden">
-    <div class="modal-panel p-4">
+    <div class="modal-panel p-4" style="max-width:900px;width:96vw">
       <div class="flex items-center justify-between mb-3">
         <h3 class="text-lg font-semibold">Receive stock (GRN)</h3>
         <button class="modal-close text-gray-500 text-2xl leading-none">&times;</button>
       </div>
-      <div class="space-y-3">
-        <div class="relative">
-          <label class="block text-xs text-gray-600 mb-1">Product (scan / code / search)</label>
-          <input id="grn-search" type="text" class="w-full p-2 border rounded" placeholder="KMR-48217 or name..." />
-          <div id="grn-dropdown" class="search-dropdown hidden"></div>
-        </div>
-        <div id="grn-selected" class="text-sm bg-gray-50 rounded p-2 hidden"></div>
-        <div>
-          <label class="block text-xs text-gray-600 mb-1">Quantity received</label>
-          <input id="grn-qty" type="number" step="1" min="1" class="w-full p-2 border rounded" />
-        </div>
-        <div>
-          <label class="block text-xs text-gray-600 mb-1">Supplier / reference (optional)</label>
-          <input id="grn-ref" type="text" class="w-full p-2 border rounded" />
-        </div>
+      <p class="text-sm text-gray-600 mb-3">Add as many items as you received in one go. Each row is one product with the qty being added to stock.</p>
+      <div class="mb-3">
+        <label class="block text-xs text-gray-600 mb-1">Supplier / reference (applies to all rows)</label>
+        <input id="grn-ref" type="text" class="w-full p-2 border rounded" placeholder="e.g. Bill #1234 from XYZ Wholesale" />
       </div>
+      <div class="flex items-center gap-2 mb-2 flex-wrap">
+        <button id="grn-add-row" class="px-3 py-1.5 bg-blue-100 text-blue-800 rounded text-sm hover:bg-blue-200 font-medium">+ Add row</button>
+        <button id="grn-clear" class="px-3 py-1.5 bg-gray-100 text-gray-600 rounded text-sm hover:bg-gray-200">Clear all</button>
+        <span id="grn-summary" class="text-sm text-gray-600 ml-auto"></span>
+      </div>
+      <div class="overflow-auto border rounded" style="max-height:50vh">
+        <table id="grn-grid" class="w-full text-sm">
+          <thead class="bg-gray-100 sticky top-0 z-10">
+            <tr>
+              <th class="w-8 px-2 py-2 text-center text-xs text-gray-500">#</th>
+              <th class="px-2 py-2 text-left text-xs font-semibold text-gray-700">Product <span class="text-red-500">*</span></th>
+              <th class="px-2 py-2 text-right text-xs font-semibold text-gray-700 w-32">Current stock</th>
+              <th class="px-2 py-2 text-right text-xs font-semibold text-gray-700 w-40">Qty received <span class="text-red-500">*</span></th>
+              <th class="px-2 py-2 text-right text-xs font-semibold text-gray-700 w-32">New stock</th>
+              <th class="w-8"></th>
+            </tr>
+          </thead>
+          <tbody id="grn-body"></tbody>
+        </table>
+      </div>
+      <!-- Floating product search dropdown — positioned over the active product cell -->
+      <div id="grn-prod-dropdown" class="hidden fixed z-50 bg-white border border-gray-300 rounded shadow-lg max-h-56 overflow-y-auto text-sm" style="min-width:240px"></div>
       <div class="mt-4 flex justify-end gap-2">
         <button class="modal-close px-4 py-2 rounded bg-gray-200">Cancel</button>
-        <button id="grn-save" class="px-4 py-2 rounded bg-green-600 text-white">Add stock</button>
+        <button id="grn-save" class="px-4 py-2 rounded bg-green-600 text-white hover:bg-green-700" disabled>Add stock</button>
       </div>
     </div>
   </div>
@@ -1100,6 +1098,46 @@
   </div>
 
   <!-- ====== Bill Preview Modal (admin) ====== -->
+  <!-- Top items modal — all items ranked by chosen metric, with bar chart -->
+  <div id="modal-top-sellers" class="modal-backdrop hidden">
+    <div class="modal-panel p-4" style="max-width:1100px;width:96vw">
+      <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <h3 id="ts-title" class="font-semibold text-gray-800">Top items — all items ranked</h3>
+        <div class="flex items-center gap-2">
+          <label class="text-xs text-gray-500">From</label>
+          <input id="ts-from" type="date" class="p-1.5 border rounded text-sm" />
+          <label class="text-xs text-gray-500">To</label>
+          <input id="ts-to" type="date" class="p-1.5 border rounded text-sm" />
+          <button id="ts-quick-month" class="text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 border rounded">This month</button>
+          <button id="ts-quick-all" class="text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 border rounded">All time</button>
+          <button class="modal-close text-gray-400 hover:text-gray-600 text-2xl leading-none ml-2">&times;</button>
+        </div>
+      </div>
+      <!-- Filter pills: switch the metric driving the rank / bar -->
+      <div id="ts-filters" class="flex flex-wrap gap-2 mb-3">
+        <button class="ts-filter-btn" data-ts-filter="top-sales">Top selling</button>
+        <button class="ts-filter-btn" data-ts-filter="low-sales">Low selling</button>
+        <button class="ts-filter-btn" data-ts-filter="top-revenue">Top revenue</button>
+        <button class="ts-filter-btn" data-ts-filter="top-reorder">Top reordered</button>
+        <button class="ts-filter-btn" data-ts-filter="top-damaged">Top damaged</button>
+      </div>
+      <div id="ts-summary" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3"></div>
+      <div id="ts-body" class="border rounded overflow-y-auto" style="max-height:55vh"></div>
+    </div>
+  </div>
+
+  <!-- Per-product Buyers modal — who bought it, how many times, last purchase -->
+  <div id="modal-product-buyers" class="modal-backdrop hidden">
+    <div class="modal-panel p-4" style="max-width:780px;width:96vw">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="font-semibold text-gray-800">Reorder history — <span id="buyers-title" class="text-blue-700"></span></h3>
+        <button class="modal-close text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+      </div>
+      <div id="buyers-summary" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3"></div>
+      <div id="buyers-body" class="border rounded overflow-y-auto" style="max-height:55vh"></div>
+    </div>
+  </div>
+
   <div id="modal-bill-view" class="modal-backdrop hidden">
     <div class="modal-panel p-4" style="max-width:900px;width:95vw">
       <div class="flex items-center justify-between mb-3">

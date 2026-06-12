@@ -1213,6 +1213,42 @@ nav.shadow {
 }
 .bulk-del-btn:hover { background: #fef2f2; color: #b91c1c; }
 
+/* Top-items modal filter pills */
+.ts-filter-btn {
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  color: #475569;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.ts-filter-btn:hover { border-color: #93c5fd; color: #1d4ed8; }
+.ts-filter-btn[data-active="true"] {
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  color: #fff;
+  border-color: transparent;
+  box-shadow: 0 3px 10px -2px rgba(37,99,235,0.45);
+}
+.ts-filter-btn[data-active="true"][data-ts-filter="top-damaged"] {
+  background: linear-gradient(135deg, #e11d48 0%, #be123c 100%);
+  box-shadow: 0 3px 10px -2px rgba(225,29,72,0.45);
+}
+.ts-filter-btn[data-active="true"][data-ts-filter="top-reorder"] {
+  background: linear-gradient(135deg, #d97706 0%, #b45309 100%);
+  box-shadow: 0 3px 10px -2px rgba(217,119,6,0.45);
+}
+.ts-filter-btn[data-active="true"][data-ts-filter="low-sales"] {
+  background: linear-gradient(135deg, #64748b 0%, #475569 100%);
+  box-shadow: 0 3px 10px -2px rgba(71,85,105,0.45);
+}
+.ts-filter-btn[data-active="true"][data-ts-filter="top-revenue"] {
+  background: linear-gradient(135deg, #059669 0%, #047857 100%);
+  box-shadow: 0 3px 10px -2px rgba(5,150,105,0.45);
+}
+
 /* Password reveal toggle (eye icon) */
 .pass-toggle {
   position: absolute; right: 6px; top: 50%;

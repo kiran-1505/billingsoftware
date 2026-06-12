@@ -134,6 +134,7 @@ export function renderProductsList() {
         <td class="whitespace-nowrap">
           <button class="text-blue-600 text-sm hover:underline mr-2" data-edit="${p.id}">Edit</button>
           <button class="text-gray-700 text-sm hover:underline mr-2" data-label="${p.id}">Label</button>
+          <button class="text-emerald-700 text-sm hover:underline mr-2" data-buyers="${p.id}" title="When you reordered this item from suppliers">Reorders</button>
           <button class="text-red-600 text-sm hover:underline" data-del="${p.id}">Del</button>
         </td>
       </tr>`).join('');
@@ -142,6 +143,7 @@ export function renderProductsList() {
     body.querySelectorAll('[data-label]').forEach(b => b.addEventListener('click', () => {
       document.dispatchEvent(new CustomEvent('toolbill:show-label', { detail: +b.dataset.label }));
     }));
+    body.querySelectorAll('[data-buyers]').forEach(b => b.addEventListener('click', () => _showProductBuyers(+b.dataset.buyers)));
   }
 
   // --- Card view ---
@@ -177,6 +179,9 @@ function _renderProductsCardView(list) {
             <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>Change photo
             <input type="file" accept="image/*" class="hidden" data-card-img="${p.id}" />
           </label>
+          <button class="w-full text-left px-3 py-2 hover:bg-emerald-50 text-emerald-700 flex items-center gap-2" data-buyers="${p.id}">
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>Reorders
+          </button>
           <button class="w-full text-left px-3 py-2 hover:bg-red-50 text-red-600 flex items-center gap-2" data-del="${p.id}">
             <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>Delete
           </button>
@@ -205,9 +210,10 @@ function _renderProductsCardView(list) {
     });
   });
 
-  // Edit / Label / Delete actions
+  // Edit / Label / Buyers / Delete actions
   container.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () => openProductModal(+b.dataset.edit)));
   container.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => _deleteProduct(+b.dataset.del)));
+  container.querySelectorAll('[data-buyers]').forEach(b => b.addEventListener('click', () => _showProductBuyers(+b.dataset.buyers)));
   container.querySelectorAll('[data-label]').forEach(b => b.addEventListener('click', () => {
     document.dispatchEvent(new CustomEvent('toolbill:show-label', { detail: +b.dataset.label }));
   }));
@@ -498,6 +504,148 @@ async function _saveProductFromModal() {
     console.error(e);
     toast('Save failed: ' + e.message, 'error');
   }
+}
+
+// Show the shop owner's REORDER history for a product — i.e., every time
+// they restocked the item (receipts via GRN or opening stock), showing:
+//   • Date of each reorder
+//   • Qty received
+//   • Stock just BEFORE the reorder (so they see how low they let it run)
+//   • Stock just AFTER the reorder
+//   • Supplier / reason from the stock movement
+//   • Gap (days) since the previous reorder — to spot patterns
+async function _showProductBuyers(productId) {
+  const product = state.products.find(p => p.id === productId);
+  if (!product) return;
+
+  const movements = await db.all('stockMovements');
+  const prodMoves = movements
+    .filter(m => m.productId === productId)
+    .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+
+  // Receipts are the "reorders" (qty > 0 stock additions from suppliers).
+  // We also include 'adjust' rows with positive qty for completeness.
+  const reorders = prodMoves.filter(m => (Number(m.qty) || 0) > 0);
+
+  // Compute stock just before each movement: running sum of all earlier movements.
+  const movesByDate = prodMoves; // already sorted asc
+  let running = 0;
+  const stockBeforeMap = new Map();
+  for (const m of movesByDate) {
+    stockBeforeMap.set(m, running);
+    running += Number(m.qty) || 0;
+  }
+  // sanity: running ≈ product.stockQty (might differ if stockQty was edited
+  // without a movement — but for our purposes the running balance from
+  // movements is the audit trail of what we know).
+
+  // Build the list newest first
+  const list = reorders.slice().reverse().map((m, idx, arr) => {
+    const stockBefore = stockBeforeMap.get(m) || 0;
+    const qty = Number(m.qty) || 0;
+    const stockAfter  = stockBefore + qty;
+    // Previous reorder is the next item in this reversed array (older)
+    const prev = arr[idx + 1];
+    const gapDays = prev
+      ? Math.round((new Date(m.date) - new Date(prev.date)) / 86400000)
+      : null;
+    return {
+      date: m.date,
+      qty,
+      stockBefore,
+      stockAfter,
+      reason: m.reason || (m.type === 'receipt' ? 'Receipt' : m.type || ''),
+      type: m.type || '',
+      gapDays,
+    };
+  });
+
+  const fmt    = (n) => '₹' + (Number(n) || 0).toFixed(2);
+  const fmtQty = (n) => {
+    const r = Number(n.toFixed(3));
+    return Number.isInteger(r) ? String(r) : r.toString();
+  };
+  const fmtDate = (iso) => {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+  };
+
+  // Header stats
+  const totalQty   = reorders.reduce((s, m) => s + (Number(m.qty) || 0), 0);
+  const lastDate   = list[0]?.date || '';
+  const gaps       = list.map(r => r.gapDays).filter(g => g != null);
+  const avgGap     = gaps.length ? Math.round(gaps.reduce((s, g) => s + g, 0) / gaps.length) : null;
+  const currentStock = product.stockQty ?? 0;
+
+  $('#buyers-title').textContent = product.name;
+  $('#buyers-summary').innerHTML = `
+    <div class="bg-gray-50 border rounded p-3">
+      <div class="text-[10px] text-gray-500 uppercase tracking-wide">Times reordered</div>
+      <div class="text-xl font-bold">${list.length}</div>
+    </div>
+    <div class="bg-gray-50 border rounded p-3">
+      <div class="text-[10px] text-gray-500 uppercase tracking-wide">Total qty received</div>
+      <div class="text-xl font-bold">${fmtQty(totalQty)}</div>
+    </div>
+    <div class="bg-gray-50 border rounded p-3">
+      <div class="text-[10px] text-gray-500 uppercase tracking-wide">Avg gap (days)</div>
+      <div class="text-xl font-bold">${avgGap != null ? avgGap : '—'}</div>
+    </div>
+    <div class="bg-emerald-50 border border-emerald-200 rounded p-3">
+      <div class="text-[10px] text-emerald-700 uppercase tracking-wide">Current stock</div>
+      <div class="text-xl font-bold text-emerald-700">${fmtQty(currentStock)}</div>
+    </div>`;
+
+  if (!list.length) {
+    $('#buyers-body').innerHTML = `
+      <div class="p-6 text-center text-gray-400 text-sm">
+        No reorders recorded yet for this item.<br/>
+        Use <strong>Receive Stock (GRN)</strong> from the Inventory tab when restocking.
+      </div>`;
+    openModal('modal-product-buyers');
+    return;
+  }
+
+  $('#buyers-body').innerHTML = `
+    <table class="w-full text-sm">
+      <thead class="bg-gray-50 border-b text-xs uppercase text-gray-500 sticky top-0">
+        <tr>
+          <th class="text-right p-2 w-10">#</th>
+          <th class="text-left p-2 w-36">Date</th>
+          <th class="text-right p-2 w-24">Qty received</th>
+          <th class="text-right p-2 w-28">Stock before</th>
+          <th class="text-right p-2 w-28">Stock after</th>
+          <th class="text-right p-2 w-24">Gap (days)</th>
+          <th class="text-left p-2">Supplier / reference</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${list.map((r, i) => {
+          const lowBefore = r.stockBefore <= (product.reorderLevel || 0);
+          const beforeClass = r.stockBefore <= 0 ? 'text-red-600 font-bold'
+                          : lowBefore ? 'text-amber-600 font-semibold'
+                          : 'text-gray-700';
+          const tag = r.type === 'receipt' ? '' :
+                       `<span class="ml-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-50 text-blue-700">${escapeHTML(r.type)}</span>`;
+          return `
+            <tr class="border-b hover:bg-blue-50/40">
+              <td class="p-2 text-right text-xs text-gray-400 mono">${list.length - i}</td>
+              <td class="p-2">
+                <div class="text-gray-800">${fmtDate(r.date)}</div>
+                <div class="text-[10px] text-gray-400">${new Date(r.date).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}</div>
+              </td>
+              <td class="p-2 text-right font-bold text-emerald-700">+${fmtQty(r.qty)}</td>
+              <td class="p-2 text-right ${beforeClass}">${fmtQty(r.stockBefore)}</td>
+              <td class="p-2 text-right">${fmtQty(r.stockAfter)}</td>
+              <td class="p-2 text-right text-gray-600">${r.gapDays != null ? r.gapDays : '—'}</td>
+              <td class="p-2 text-xs text-gray-700">${escapeHTML(r.reason)}${tag}</td>
+            </tr>`;
+        }).join('')}
+      </tbody>
+    </table>`;
+
+  openModal('modal-product-buyers');
 }
 
 async function _deleteProduct(id) {
