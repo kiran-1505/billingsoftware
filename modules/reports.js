@@ -29,7 +29,6 @@ export async function renderReports() {
   const isAdmin = state.currentUser === 'user2';
   $('#bills-head-paid').classList.toggle('hidden', !isAdmin);
   $('#bills-foot-paid').classList.toggle('hidden', !isAdmin);
-  $('#btn-rep-pdf-gst-only')?.classList.toggle('hidden', !isAdmin);
   $('#bills-head-actions')?.classList.toggle('hidden', !isAdmin);
   $('#bills-foot-actions')?.classList.toggle('hidden', !isAdmin);
 
@@ -147,60 +146,83 @@ async function _showBillPreview(id, which) {
   openModal('modal-bill-view');
 }
 
+// Build the GST Sales Register data (rows + totals) shared by Excel export
+// and the PDF export. Filed values (inv.items / inv.total) so it matches the
+// auditor-ready filing copy regardless of role.
+function _buildGSTRegisterRows(list, sellerStateCode) {
+  const header = [
+    'Invoice No', 'Invoice Date', 'Customer Name', 'GSTIN', 'State',
+    'Invoice Type', 'HSN Code',
+    'Taxable Value (₹)', 'GST Rate', 'CGST (₹)', 'SGST (₹)', 'IGST (₹)',
+    'Total Invoice (₹)',
+  ];
+  const rows = [header];
+  let tT = 0, tC = 0, tS = 0, tI = 0, tInv = 0;
+  const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+  for (const inv of list) {
+    const r = _gstRowFor(inv, sellerStateCode);
+    tT += r.taxable; tC += r.cgst; tS += r.sgst; tI += r.igst; tInv += r.total;
+    rows.push([
+      r.invoiceNo, r.date, r.customer, r.gstin, r.state,
+      r.type, r.hsn,
+      round2(r.taxable), r.rateLabel,
+      round2(r.cgst), round2(r.sgst), round2(r.igst), round2(r.total),
+    ]);
+  }
+  rows.push([
+    'TOTAL', '', '', '', '', '', '',
+    round2(tT), '', round2(tC), round2(tS), round2(tI), round2(tInv),
+  ]);
+  return rows;
+}
+
+// Export the filtered bills in the GST Sales Register format as an Excel
+// (.xlsx) workbook. Uses SheetJS (XLSX global from CDN). Same data as the
+// PDF — one row per invoice with auditor-ready columns + a TOTAL row.
 async function _exportBillsCSV() {
-  const isAdmin = state.currentUser === 'user2';
+  if (typeof XLSX === 'undefined') return toast('Excel library not loaded — refresh and try again', 'error');
   const invoices = await db.all('invoices');
   const from     = $('#rep-date-from').value;
   const to       = $('#rep-date-to').value;
-  // Apply the SAME filters that the visible table uses
   let list = invoices;
   if (from) list = list.filter(i => (i.date || '').slice(0, 10) >= from);
   if (to)   list = list.filter(i => (i.date || '').slice(0, 10) <= to);
   if (state.repCustFilter === 'gst')    list = list.filter(isGstInvoice);
   if (state.repCustFilter === 'walkin') list = list.filter(i => !isGstInvoice(i));
+  if (!list.length) return toast('No bills in this range', 'error');
+  list.sort((a, b) => (a.invoiceNo || '').localeCompare(b.invoiceNo || ''));
 
-  // Column set differs by role:
-  //   accounts (user1) → filed values only (what they see on screen)
-  //   admin (user2)    → original (pre-scale) + filed values + Amount Paid
-  const header = isAdmin
-    ? ['Invoice', 'Date', 'Customer', 'CustomerPhone', 'CustomerGST', 'ItemCode', 'ItemName', 'Qty', 'Price', 'LineTotal', 'OriginalTotal', 'FiledTotal', 'AmountPaid', 'Notes']
-    : ['Invoice', 'Date', 'Customer', 'CustomerPhone', 'CustomerGST', 'ItemCode', 'ItemName', 'Qty', 'Price', 'LineTotal', 'InvoiceTotal', 'Notes'];
-  const rows = [header];
+  const s = state.settings || {};
+  const sellerStateCode = (s.gstin || '').slice(0, 2);
+  const rows = _buildGSTRegisterRows(list, sellerStateCode);
 
-  for (const inv of list) {
-    const date = (inv.date || '').slice(0, 10);
-    // Admin sees the ORIGINAL items (pre-scale); accounts sees the FILED items
-    const items = isAdmin && inv._gstOriginalItems ? inv._gstOriginalItems : (inv.items || []);
-    const originalTotal = getActualTotal(inv);
-    const filedTotal    = inv.total || 0;
-
-    for (const l of items) {
-      const lineTotal = (l.qty || 0) * (l.price || 0);
-      if (isAdmin) {
-        rows.push([
-          inv.invoiceNo, date,
-          inv.customerName || '', inv.customerPhone || '', inv.customerGst || '',
-          l.shortCode || '', l.name, l.qty, l.price, lineTotal,
-          originalTotal, filedTotal,
-          (inv._gstOriginalAmountPaid ?? inv.amountPaid) ?? '', inv.notes || '',
-        ]);
-      } else {
-        rows.push([
-          inv.invoiceNo, date,
-          inv.customerName || '', inv.customerPhone || '', inv.customerGst || '',
-          l.shortCode || '', l.name, l.qty, l.price, lineTotal,
-          filedTotal,
-          inv.notes || '',
-        ]);
+  // Build the worksheet
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  // Set column widths (in character units)
+  ws['!cols'] = [
+    { wch: 12 }, { wch: 12 }, { wch: 28 }, { wch: 18 }, { wch: 18 },
+    { wch:  8 }, { wch: 10 },
+    { wch: 16 }, { wch: 10 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 16 },
+  ];
+  // Freeze the header row
+  ws['!freeze'] = { xSplit: 0, ySplit: 1 };
+  // Number-format the money columns
+  const moneyCols = [7, 9, 10, 11, 12]; // 0-based indices
+  for (let r = 1; r < rows.length; r++) {
+    for (const c of moneyCols) {
+      const addr = XLSX.utils.encode_cell({ r, c });
+      if (ws[addr] && typeof ws[addr].v === 'number') {
+        ws[addr].t = 'n';
+        ws[addr].z = '#,##0.00';
       }
     }
   }
-  const csv = rows.map(r => r.map(c => {
-    const s = String(c ?? '');
-    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
-  }).join(',')).join('\n');
-  downloadBlob(new Blob([csv], { type: 'text/csv' }), `bills-${from || 'all'}-${to || ''}.csv`);
-  toast('CSV downloaded', 'success');
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'GST Sales Register');
+  const filename = `GST-sales-register-${from || 'start'}-to-${to || 'end'}.xlsx`;
+  XLSX.writeFile(wb, filename);
+  toast(`Excel downloaded — ${list.length} bills`, 'success');
 }
 
 // ---- GST Sales Register PDF (auditor-ready) ----
@@ -265,21 +287,15 @@ function _gstRowFor(inv, sellerStateCode) {
   };
 }
 
-// opts.gstOnly = true → ignore the on-screen filter, force GST customers only.
-//                       Used by the admin-only "GST Customers Only PDF" button.
-async function _exportGSTSalesRegisterPDF(opts = {}) {
+async function _exportGSTSalesRegisterPDF() {
   const invoices = await db.all('invoices');
   const from = $('#rep-date-from').value;
   const to   = $('#rep-date-to').value;
   let list = invoices;
   if (from) list = list.filter(i => (i.date || '').slice(0, 10) >= from);
   if (to)   list = list.filter(i => (i.date || '').slice(0, 10) <= to);
-  if (opts.gstOnly) {
-    list = list.filter(isGstInvoice);
-  } else {
-    if (state.repCustFilter === 'gst')    list = list.filter(isGstInvoice);
-    if (state.repCustFilter === 'walkin') list = list.filter(i => !isGstInvoice(i));
-  }
+  if (state.repCustFilter === 'gst')    list = list.filter(isGstInvoice);
+  if (state.repCustFilter === 'walkin') list = list.filter(i => !isGstInvoice(i));
   if (!list.length) return toast('No bills in this range', 'error');
   list.sort((a, b) => (a.invoiceNo || '').localeCompare(b.invoiceNo || ''));
 
@@ -294,8 +310,7 @@ async function _exportGSTSalesRegisterPDF(opts = {}) {
   // ── Top header block ──
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(14);
-  const title = opts.gstOnly ? 'GST SALES REGISTER — GST CUSTOMERS ONLY' : 'GST SALES REGISTER';
-  doc.text(title, PAGE_W / 2, y + 6, { align: 'center' });
+  doc.text('GST SALES REGISTER', PAGE_W / 2, y + 6, { align: 'center' });
   y += 9;
   doc.setFontSize(9); doc.setFont('helvetica', 'normal');
   doc.text(s.shopName || '', PAGE_W / 2, y, { align: 'center' });
@@ -417,8 +432,7 @@ async function _exportGSTSalesRegisterPDF(opts = {}) {
   doc.text(`Generated: ${new Date().toLocaleString('en-IN')}`, PAGE_W / 2, PAGE_H - mg + 2, { align: 'center' });
   doc.text(`Page ${pageNum}`, PAGE_W - mg, PAGE_H - mg + 2, { align: 'right' });
 
-  const fileBase = opts.gstOnly ? 'GST-sales-register-GST-only' : 'GST-sales-register';
-  doc.save(`${fileBase}-${from || 'start'}-to-${to || 'end'}.pdf`);
+  doc.save(`GST-sales-register-${from || 'start'}-to-${to || 'end'}.pdf`);
   toast(`PDF downloaded — ${list.length} bills`, 'success');
 }
 
@@ -434,8 +448,7 @@ export function wireReports() {
     renderReports();
   });
   $('#btn-rep-export').addEventListener('click', _exportBillsCSV);
-  $('#btn-rep-pdf')?.addEventListener('click', () => _exportGSTSalesRegisterPDF());
-  $('#btn-rep-pdf-gst-only')?.addEventListener('click', () => _exportGSTSalesRegisterPDF({ gstOnly: true }));
+  $('#btn-rep-pdf')?.addEventListener('click', _exportGSTSalesRegisterPDF);
   $$('.rep-cust-filter-btn').forEach(btn => btn.addEventListener('click', () => {
     state.repCustFilter = btn.dataset.filter;
     $$('.rep-cust-filter-btn').forEach(b => {

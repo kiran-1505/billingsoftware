@@ -134,7 +134,6 @@ export function renderProductsList() {
         <td class="whitespace-nowrap">
           <button class="text-blue-600 text-sm hover:underline mr-2" data-edit="${p.id}">Edit</button>
           <button class="text-gray-700 text-sm hover:underline mr-2" data-label="${p.id}">Label</button>
-          <button class="text-emerald-700 text-sm hover:underline mr-2" data-buyers="${p.id}" title="When you reordered this item from suppliers">Reorders</button>
           <button class="text-red-600 text-sm hover:underline" data-del="${p.id}">Del</button>
         </td>
       </tr>`).join('');
@@ -179,9 +178,6 @@ function _renderProductsCardView(list) {
             <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>Change photo
             <input type="file" accept="image/*" class="hidden" data-card-img="${p.id}" />
           </label>
-          <button class="w-full text-left px-3 py-2 hover:bg-emerald-50 text-emerald-700 flex items-center gap-2" data-buyers="${p.id}">
-            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>Reorders
-          </button>
           <button class="w-full text-left px-3 py-2 hover:bg-red-50 text-red-600 flex items-center gap-2" data-del="${p.id}">
             <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>Delete
           </button>
@@ -1168,6 +1164,9 @@ export function wireProducts() {
   document.addEventListener('click', () => {
     document.querySelectorAll('[id^="prod-menu-"]').forEach(m => m.classList.add('hidden'));
   });
+
+  // Listen for the "show reorders" event dispatched from the Inventory tab
+  document.addEventListener('toolbill:show-reorders', (e) => _showProductBuyers(+e.detail));
 
   document.addEventListener('toolbill:data-restored', renderProductsCategoryView);
   document.addEventListener('toolbill:categories-changed', () => {

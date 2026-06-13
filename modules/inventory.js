@@ -72,7 +72,7 @@ export function renderInventoryList() {
 
   const body = $('#inventory-body');
   if (!list.length) {
-    body.innerHTML = `<tr><td colspan="5" class="text-center py-8 text-gray-400">${state.showLowOnly ? 'No low-stock items' : 'No items match'}</td></tr>`;
+    body.innerHTML = `<tr><td colspan="6" class="text-center py-8 text-gray-400">${state.showLowOnly ? 'No low-stock items' : 'No items match'}</td></tr>`;
     return;
   }
   body.innerHTML = list.map(p => {
@@ -83,8 +83,15 @@ export function renderInventoryList() {
       <td class="text-right ${isLow ? 'stock-low' : ''}">${fmtInt(p.stockQty)}</td>
       <td class="text-right">${fmtInt(p.reorderLevel)}</td>
       <td>${isLow ? '<span class="stock-low">LOW</span>' : '<span class="stock-ok">OK</span>'}</td>
+      <td><button class="text-emerald-700 text-sm hover:underline" data-inv-reorders="${p.id}" title="When you reordered this item from suppliers">View reorders</button></td>
     </tr>`;
   }).join('');
+
+  body.querySelectorAll('[data-inv-reorders]').forEach(b => {
+    b.addEventListener('click', () => {
+      document.dispatchEvent(new CustomEvent('toolbill:show-reorders', { detail: +b.dataset.invReorders }));
+    });
+  });
 }
 
 // ---- Product picker (shared search dropdown for GRN / Adj) ----

@@ -52,12 +52,7 @@ let _walkinTotalInRange = 0;
 export async function renderVoidBillsList() {
   const { from, to } = _readRange();
   const body  = $('#void-bills-list');
-  if (!from && !to) {
-    body.innerHTML = `<div class="p-3 text-gray-400 text-center text-xs">Pick a date range</div>`;
-    _gstTotalInRange = 0; _walkinTotalInRange = 0;
-    _updateScaleFormula();
-    return;
-  }
+  // Empty range == ALL TIME (every bill, scaled or not)
 
   const invoices = await db.all('invoices');
   const rangeAll = invoices.filter(i => _inRange(i, from, to));
@@ -147,7 +142,7 @@ function _updateScaleFormula() {
 export async function applyVoidBills() {
   const { from, to } = _readRange();
   const target = parseFloat($('#void-target').value);
-  if (!from && !to)                 return toast('Select a date range first', 'error');
+  // Empty range is treated as "All time" — no date guard needed
   if (isNaN(target) || target < 0)  return toast('Enter a valid target amount', 'error');
 
   // Normalise legacy scaled bills first (idempotent)
@@ -260,8 +255,7 @@ export async function applyVoidBills() {
 }
 
 export async function restoreVoidBills() {
-  const { from, to } = _readRange();
-  if (!from && !to) return;
+  const { from, to } = _readRange(); // empty == all time
   await migrateScaledAmountPaid();
   const invoices = await db.all('invoices');
   const rangeInv = invoices.filter(i => _inRange(i, from, to));
@@ -283,8 +277,7 @@ export async function restoreVoidBills() {
 }
 
 export async function downloadVoidBillsPDF() {
-  const { from, to } = _readRange();
-  if (!from && !to) return;
+  const { from, to } = _readRange(); // empty == all time
 
   const invoices = await db.all('invoices');
   const rangeInv = invoices
@@ -396,6 +389,14 @@ export function wireVoidBills() {
     const t = _todayISO();
     $('#void-date-from').value = t;
     $('#void-date-to').value   = t;
+    renderVoidBillsList();
+  });
+  $('#btn-void-quick-all')?.addEventListener('click', () => {
+    // All time — empty range means "every bill ever, including ones already
+    // scaled-down in past sessions". Existing scale-down state is preserved
+    // (we don't auto-reset). Use the Restore button if you want to roll back.
+    $('#void-date-from').value = '';
+    $('#void-date-to').value   = '';
     renderVoidBillsList();
   });
 }
