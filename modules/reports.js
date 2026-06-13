@@ -147,8 +147,9 @@ async function _showBillPreview(id, which) {
 }
 
 // Build the GST Sales Register data (rows + totals) shared by Excel export
-// and the PDF export. Filed values (inv.items / inv.total) so it matches the
-// auditor-ready filing copy regardless of role.
+// and the PDF export. Role-aware via _gstRowFor:
+//   • Accounts → filed (scaled-down) figures they see on screen
+//   • Admin    → complete (original pre-scale) figures
 function _buildGSTRegisterRows(list, sellerStateCode) {
   const header = [
     'Invoice No', 'Invoice Date', 'Customer Name', 'GSTIN', 'State',
@@ -239,19 +240,22 @@ const _STATES = {
 function _stateName(code) { return _STATES[code || ''] || ''; }
 
 // One row of GST Sales Register numbers for a single invoice.
-// ALWAYS uses the FILED (post-scale-down) values — `inv.items` and `inv.total`
-// are rewritten by the scale-down flow, so:
-//   • Non-scaled bills → original numbers (same as what accounts sees)
-//   • Scaled bills      → filed numbers (the GST-return version)
-// The pre-scale snapshot lives in `_gstOriginalItems` and is intentionally
-// NOT used here, because this PDF is the auditor's filing copy.
+// Role-aware so the export matches what each user is meant to see:
+//   • Accounts (user1) → FILED values (inv.items / inv.total). For scaled
+//     bills these are the GST-return / scaled-down figures they see on screen.
+//   • Admin (user2)    → COMPLETE/original values. For scaled bills we read
+//     the pre-scale snapshot (_gstOriginalItems) so admin gets the real,
+//     unscaled report.
 function _gstRowFor(inv, sellerStateCode) {
+  const isAdmin = state.currentUser === 'user2';
+  const items = (isAdmin && inv._gstOriginalItems) ? inv._gstOriginalItems : (inv.items || []);
+  const totalForRow = isAdmin ? getActualTotal(inv) : (inv.total || 0);
   const buyerStateCode = (inv.customerGst || '').slice(0, 2);
   const isInterState = !!sellerStateCode && !!buyerStateCode && sellerStateCode !== buyerStateCode;
   let taxable = 0, cgst = 0, sgst = 0, igst = 0;
   let firstHSN = '';
   const ratesSeen = new Set();
-  for (const l of (inv.items || [])) {
+  for (const l of items) {
     const prod = (state.products || []).find(p => p.id === l.productId);
     let cRate = prod?.cgstRate, sRate = prod?.sgstRate;
     if (cRate == null && sRate == null) {
@@ -283,7 +287,7 @@ function _gstRowFor(inv, sellerStateCode) {
     taxable,
     rateLabel,
     cgst, sgst, igst,
-    total:     inv.total || 0, // filed total (scaled if applicable)
+    total:     totalForRow, // accounts → filed; admin → original (pre-scale)
   };
 }
 
