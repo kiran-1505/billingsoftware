@@ -633,12 +633,9 @@ export function wireInventory() {
     renderInventoryCategoryView();
   });
 
-  _wireProductPicker($('#grn-search'), $('#grn-dropdown'), (p) => {
-    state.grnTarget = p;
-    const box = $('#grn-selected');
-    box.classList.remove('hidden');
-    box.innerHTML = `Selected: <b>${escapeHTML(p.shortCode)}</b> — ${escapeHTML(p.name)} (current stock: ${p.stockQty})`;
-  });
+  // GRN now uses a multi-row grid (modal-grn rewritten) — its own
+  // per-row product search is wired by _wireGrnProductSearch when rows
+  // are added, so no global _wireProductPicker call here for GRN.
   _wireProductPicker($('#adj-search'), $('#adj-dropdown'), (p) => {
     state.adjTarget = p;
     const box = $('#adj-selected');
